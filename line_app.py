@@ -250,55 +250,58 @@ if db_mode == "Line圖片文字叫貨":
     input_mode = st.sidebar.radio("對帳輸入模式：", ["📸 圖片截圖上傳模式", "✍️ 純文字複製貼上模式"], index=1, horizontal=True)
     api_key = st.sidebar.text_input("Gemini API Key", value="AQ.Ab8RN6K7Kir0lqgMowA52Bo5tLY23cn7_lQ9dJhAvHPm913iSA", type="password")
 
-# 💡 新增：AI 認不到人時的「智慧引導綁定彈窗」
+# 💡 新增：AI 認不到人時的「智慧引導綁定彈窗」 (完全靠左，前方不留空格)
 @st.dialog("🤖 AI 未能識別客戶：請協助綁定特徵", width="large")
 def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
-st.markdown(f"系統從圖片中偵測到群組名稱為：`{detected_group}`，但雲端目前無此綁定。")
+    # 🎯 修正重點：def 下方的所有程式碼，開頭都必須多 4 個空格！
+    st.markdown(f"系統從圖片中偵測到群組名稱為：`{detected_group}`，但雲端目前無此綁定。")
 
-action_type = st.radio("請選擇處理方式：", ["🔗 綁定到現有客戶", "✨ 建立全新客戶並綁定"], horizontal=True)
-st.markdown("---")
+    action_type = st.radio("請選擇處理方式：", ["🔗 綁定到現有客戶", "✨ 建立全新客戶並綁定"], horizontal=True)
+    st.markdown("---")
 
-if action_type == "🔗 綁定到現有客戶":
-    selected_opt = st.selectbox("🎯 請指定歸屬於哪位正式客戶：", options=search_options, key="dialog_link_cust")
-    if selected_opt != "請選擇或輸入文字搜尋客戶... (留空代表查詢當日全廠)":
-        target_cust = cust_mapping[selected_opt]["raw_data"]
-        if st.button("💾 確認綁定舊客", use_container_width=True):
-            old_kw = target_cust.get("search_keywords", "")
-            new_kw = f"{old_kw}, {detected_group}" if old_kw else detected_group
-            try:
-                supabase.table("customers").update({"search_keywords": new_kw}).eq("customer_id", target_cust["customer_id"]).execute()
-                # 立即灌回當前 Session 狀態，讓後續功能按鈕亮起
-                st.session_state["final_c_name"] = target_cust["standard_name"]
-                st.session_state["final_c_id"] = target_cust["customer_id"]
-                st.session_state["ai_detected_group_name"] = ""
-                st.success(f"🎉 成功！已將『{detected_group}』永久綁定至【{target_cust['standard_name']}】")
-                time.sleep(1)
-                st.rerun()
-            except Exception as le: st.error(f"寫入失敗: {str(le)}")
-            
-else:
-    new_c_id = st.text_input("🔢 新客戶編號 (例如: XV270099)").strip()
-    new_c_name = st.text_input("🏢 新客戶官方標準全名").strip()
-    if st.button("💾 創立新客並直接綁定", use_container_width=True):
-        if new_c_id and new_c_name:
-            try:
-                # 直接寫入客戶主檔，特徵直接代入
-                combined_keywords = f"SHORTCUT: , {detected_group}"
-                supabase.table("customers").insert({
-                    "customer_id": new_c_id,
-                    "standard_name": new_c_name,
-                    "search_keywords": combined_keywords
-                }).execute()
-                # 立即灌回當前 Session 狀態
-                st.session_state["final_c_name"] = new_c_name
-                st.session_state["final_c_id"] = new_c_id
-                st.session_state["ai_detected_group_name"] = ""
-                st.success(f"🎉 成功！已自動創立【{new_c_name}】並完成圖片特徵綁定！")
-                time.sleep(1)
-                st.rerun()
-            except Exception as le: st.error(f"建立新客失敗: {str(le)}")
-        else:
-            st.error("❌ 請務必填寫完整的編號與名稱！")
+    if action_type == "🔗 綁定到現有客戶":
+        selected_opt = st.selectbox("🎯 請指定歸屬於哪位正式客戶：", options=search_options, key="dialog_link_cust")
+        if selected_opt != "請選擇或輸入文字搜尋客戶... (留空代表查詢當日全廠)":
+            target_cust = cust_mapping[selected_opt]["raw_data"]
+            if st.button("💾 確認綁定舊客", use_container_width=True):
+                old_kw = target_cust.get("search_keywords", "")
+                new_kw = f"{old_kw}, {detected_group}" if old_kw else detected_group
+                try:
+                    supabase.table("customers").update({"search_keywords": new_kw}).eq("customer_id", target_cust["customer_id"]).execute()
+                    # 立即灌回當前 Session 狀態，讓後續功能按鈕亮起
+                    st.session_state["final_c_name"] = target_cust["standard_name"]
+                    st.session_state["final_c_id"] = target_cust["customer_id"]
+                    st.session_state["ai_detected_group_name"] = ""
+                    st.success(f"🎉 成功！已將『{detected_group}』永久綁定至【{target_cust['standard_name']}】")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as le: 
+                    st.error(f"寫入失敗: {str(le)}")
+                
+    else:
+        new_c_id = st.text_input("🔢 新客戶編號 (例如: XV270099)").strip()
+        new_c_name = st.text_input("🏢 新客戶官方標準全名").strip()
+        if st.button("💾 創立新客並直接綁定", use_container_width=True):
+            if new_c_id and new_c_name:
+                try:
+                    # 直接寫入客戶主檔，特徵直接代入
+                    combined_keywords = f"SHORTCUT: , {detected_group}"
+                    supabase.table("customers").insert({
+                        "customer_id": new_c_id,
+                        "standard_name": new_c_name,
+                        "search_keywords": combined_keywords
+                    }).execute()
+                    # 立即灌回當前 Session 狀態
+                    st.session_state["final_c_name"] = new_c_name
+                    st.session_state["final_c_id"] = new_c_id
+                    st.session_state["ai_detected_group_name"] = ""
+                    st.success(f"🎉 成功！已自動創立【{new_c_name}】並完成圖片特徵綁定！")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as le: 
+                    st.error(f"建立新客失敗: {str(le)}")
+            else:
+                st.error("❌ 請務必填寫完整的編號與名稱！")
 
 # 這裡的縮排前方一律維持 4 個空格，對齊 if input_mode
     uploaded_file = st.file_uploader("📤 請上傳電腦版 LINE 視窗截圖 (支援 PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
