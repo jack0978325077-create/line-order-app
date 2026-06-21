@@ -888,175 +888,175 @@ def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
                     else:
                         st.error("❌ 密碼錯誤：管理員授權認證失敗。")
 
-    st.markdown("---")
-    st.subheader("🔍 商品主檔快速智慧查詢看板")
-    search_query = st.text_input("💡 請輸入要查詢的『商品名稱關鍵字』或『完整商品編號』：", placeholder="例如：53500 或 雞腿排").strip()
-    
-    try:
-        res_p = supabase.table("product_master").select("*").order("product_id").execute()
-        all_prods = res_p.data if res_p.data else []
-        
-        if search_query and all_prods:
-            filtered_prods = [
-                p for p in all_prods 
-                if search_query.lower() in str(p.get("product_id", "")).lower() or search_query in str(p.get("product_name", ""))
-            ]
-            if filtered_prods:
-                st.success(f"🎯 幫您找到 {len(filtered_prods)} 筆符合關鍵字『{search_query}』的完整資訊：")
-                for p in filtered_prods:
-                    with st.container():
-                        st.markdown(f"### 📦 【{p['product_name']}】")
-                        c1, c2, c3 = st.columns(3)
-                        with c1: st.metric("🔢 商品編號", str(p['product_id']))
-                        with c2: st.metric("💰 基準批價", f"${p['price']} 元")
-                        with c3: st.markdown(f"📋 **完整規格、成本與銷售方案：**\n> {p['unit']}")
-                        st.markdown("<hr style='border:1px dashed #eee'>", unsafe_allow_html=True)
-            else:
-                st.warning(f"❌ 查無此商品：找不到任何包含『{search_query}』的編號或品名，請重新確認。")
-        
         st.markdown("---")
-        st.subheader(f"📋 目前雲端全品項商品總覽 (雲端資料庫實際內存: {len(all_prods)} 筆)")
-        if all_prods:
-            df_p_show = pd.DataFrame(all_prods)[["product_id", "product_name", "unit", "price"]]
-            df_p_show.columns = ["商品編號", "商品名稱", "完整組合注記與成本", "基準批價"]
-            st.dataframe(df_p_show, use_container_width=True, hide_index=True)
-    except Exception as query_err:
-        st.error(f"查詢出錯: {str(query_err)}")
-# ====================
-# 4. 🏢 管理客戶主檔
-# ====================
-elif db_mode == "🏢 管理客戶主檔":
-    st.header("🏢 客戶主檔雲端資料庫")
-    ADMIN_PASSWORD = "123"  
-
-    col1_c, col2_c = st.columns(2)
-    with col1_c:
-        with st.form("add_customer_form", clear_on_submit=True):
-            st.subheader("➕ 快速新增 / 覆蓋更新客戶資料")
-            c_id = st.text_input("客戶編號 (必須唯一，例如: XV270041)").strip()
-            c_name = st.text_input("官方標準全名 (例如: 御香園食品行)").strip()
-            c_shortcut = st.text_input("⭐ 習慣縮寫/自訂快搜 (多個請用逗號隔開)").strip()
-            submit_c = st.form_submit_button("儲存 / 更新客戶資料")
+        st.subheader("🔍 商品主檔快速智慧查詢看板")
+        search_query = st.text_input("💡 請輸入要查詢的『商品名稱關鍵字』或『完整商品編號』：", placeholder="例如：53500 或 雞腿排").strip()
+        
+        try:
+            res_p = supabase.table("product_master").select("*").order("product_id").execute()
+            all_prods = res_p.data if res_p.data else []
             
-            if submit_c and c_id and c_name:
-                try:
-                    existing_kw = ""
-                    old_res = supabase.table("customers").select("search_keywords").eq("customer_id", c_id).execute()
-                    if old_res.data: existing_kw = old_res.data[0].get("search_keywords", "")
-                    
-                    learned_part = existing_kw.split(" , ", 1)[1] if "SHORTCUT:" in existing_kw and " , " in existing_kw else existing_kw
-                    normalized_shortcut = c_shortcut.replace("，", ",")
-                    combined_keywords = f"SHORTCUT:{normalized_shortcut}" + (f" , {learned_part}" if learned_part else "")
-                    
-                    supabase.table("customers").upsert({"customer_id": c_id, "standard_name": c_name, "search_keywords": combined_keywords}).execute()
-                    st.success(f"🎉 客戶『{c_name}』資料已成功更新！")
-                    time.sleep(1)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ 寫入失敗: {str(e)}")
-
-    with col2_c:
-        with st.form("delete_customer_form", clear_on_submit=True):
-            st.subheader("🗑️ 刪除客戶主檔資料")
-            d_c_id = st.text_input("要刪除的客戶編號").strip()
-            input_pwd_c = st.text_input("🔑 請輸入管理員授權密碼 ", type="password")
-            submit_d_c = st.form_submit_button("🔴 確認徹底刪除")
+            if search_query and all_prods:
+                filtered_prods = [
+                    p for p in all_prods 
+                    if search_query.lower() in str(p.get("product_id", "")).lower() or search_query in str(p.get("product_name", ""))
+                ]
+                if filtered_prods:
+                    st.success(f"🎯 幫您找到 {len(filtered_prods)} 筆符合關鍵字『{search_query}』的完整資訊：")
+                    for p in filtered_prods:
+                        with st.container():
+                            st.markdown(f"### 📦 【{p['product_name']}】")
+                            c1, c2, c3 = st.columns(3)
+                            with c1: st.metric("🔢 商品編號", str(p['product_id']))
+                            with c2: st.metric("💰 基準批價", f"${p['price']} 元")
+                            with c3: st.markdown(f"📋 **完整規格、成本與銷售方案：**\n> {p['unit']}")
+                            st.markdown("<hr style='border:1px dashed #eee'>", unsafe_allow_html=True)
+                else:
+                    st.warning(f"❌ 查無此商品：找不到任何包含『{search_query}』的編號或品名，請重新確認。")
             
-            if submit_d_c and d_c_id:
-                if input_pwd_c == ADMIN_PASSWORD:
+            st.markdown("---")
+            st.subheader(f"📋 目前雲端全品項商品總覽 (雲端資料庫實際內存: {len(all_prods)} 筆)")
+            if all_prods:
+                df_p_show = pd.DataFrame(all_prods)[["product_id", "product_name", "unit", "price"]]
+                df_p_show.columns = ["商品編號", "商品名稱", "完整組合注記與成本", "基準批價"]
+                st.dataframe(df_p_show, use_container_width=True, hide_index=True)
+        except Exception as query_err:
+            st.error(f"查詢出錯: {str(query_err)}")
+    # ====================
+    # 4. 🏢 管理客戶主檔
+    # ====================
+    elif db_mode == "🏢 管理客戶主檔":
+        st.header("🏢 客戶主檔雲端資料庫")
+        ADMIN_PASSWORD = "123"  
+    
+        col1_c, col2_c = st.columns(2)
+        with col1_c:
+            with st.form("add_customer_form", clear_on_submit=True):
+                st.subheader("➕ 快速新增 / 覆蓋更新客戶資料")
+                c_id = st.text_input("客戶編號 (必須唯一，例如: XV270041)").strip()
+                c_name = st.text_input("官方標準全名 (例如: 御香園食品行)").strip()
+                c_shortcut = st.text_input("⭐ 習慣縮寫/自訂快搜 (多個請用逗號隔開)").strip()
+                submit_c = st.form_submit_button("儲存 / 更新客戶資料")
+                
+                if submit_c and c_id and c_name:
                     try:
-                        supabase.table("customers").delete().eq("customer_id", d_c_id).execute()
-                        st.success(f"🗑️ 已將客戶編號『{d_c_id}』徹底抹除！")
+                        existing_kw = ""
+                        old_res = supabase.table("customers").select("search_keywords").eq("customer_id", c_id).execute()
+                        if old_res.data: existing_kw = old_res.data[0].get("search_keywords", "")
+                        
+                        learned_part = existing_kw.split(" , ", 1)[1] if "SHORTCUT:" in existing_kw and " , " in existing_kw else existing_kw
+                        normalized_shortcut = c_shortcut.replace("，", ",")
+                        combined_keywords = f"SHORTCUT:{normalized_shortcut}" + (f" , {learned_part}" if learned_part else "")
+                        
+                        supabase.table("customers").upsert({"customer_id": c_id, "standard_name": c_name, "search_keywords": combined_keywords}).execute()
+                        st.success(f"🎉 客戶『{c_name}』資料已成功更新！")
                         time.sleep(1)
                         st.rerun()
-                    except Exception as e: st.error(f"❌ 刪除失敗: {str(e)}")
-                else: st.error("❌ 授權密碼錯誤！")
-
-    st.markdown("---")
-    st.subheader("📋 目前雲端客戶總覽")
-    try:
-        res = supabase.table("customers").select("*").order("customer_id").execute()
-        if res.data:
-            parsed_cust_list = []
-            for row in res.data:
-                kw = row.get("search_keywords", "")
-                shortcut = kw.split(" , ", 1)[0].replace("SHORTCUT:", "").strip() if "SHORTCUT:" in kw else ""
-                line_kw = kw.split(" , ", 1)[1] if " , " in kw else ""
+                    except Exception as e:
+                        st.error(f"❌ 寫入失敗: {str(e)}")
+    
+        with col2_c:
+            with st.form("delete_customer_form", clear_on_submit=True):
+                st.subheader("🗑️ 刪除客戶主檔資料")
+                d_c_id = st.text_input("要刪除的客戶編號").strip()
+                input_pwd_c = st.text_input("🔑 請輸入管理員授權密碼 ", type="password")
+                submit_d_c = st.form_submit_button("🔴 確認徹底刪除")
                 
-                parsed_cust_list.append({
-                    "客戶編號": row["customer_id"], "官方標準全名": row["standard_name"],
-                    "⭐ 自訂快搜/縮寫": shortcut, "🤖 系統已學會的圖片特徵": line_kw if line_kw else "尚未綁定"
-                })
-            st.dataframe(pd.DataFrame(parsed_cust_list), use_container_width=True, hide_index=True)
-        else: st.info("💡 目前雲端內無客戶資料。")
-    except Exception as e: st.error(f"❌ 讀取雲端資料失敗: {str(e)}")
-
-# ====================
-# 5. 🏪 全廠揀貨理貨大總管
-# ====================
-elif db_mode == "🏪 全廠揀貨理貨大總管":
-    st.title("🏪 全廠揀貨理貨大總管")
-    st.caption("🚀 專為現場設計的「純唯讀」揀貨與分貨看板，支援跨日期範圍統計，100% 防呆。")
-
-    st.markdown("### 📅 請選擇理貨備貨日期範圍")
-    today_date = datetime.now().date()
-    selected_range = st.date_input("請選擇開始與結束日期：", value=(today_date, today_date), key="manager_date_range_input")
-
-    if isinstance(selected_range, tuple) and len(selected_range) == 2:
-        start_date, end_date = selected_range
-        start_date_str = start_date.strftime("%Y/%m/%d")
-        end_date_str = end_date.strftime("%Y/%m/%d")
-        range_label = f"{start_date_str}" if start_date == end_date else f"{start_date_str} 至 {end_date_str}"
-        st.info(f"🔍 目前正在統計區間：`{range_label}` 的全廠單據資訊")
-
-        raw_orders = []
-        if supabase:
-            try:
-                res_orders = supabase.table("delivery_orders").select("*").gte("delivery_date", start_date_str).lte("delivery_date", end_date_str).eq("status", "已登記未出貨").execute()
-                raw_orders = res_orders.data if res_orders.data else []
-            except Exception as e:
-                st.error(f"❌ 雲端資料庫連線失敗：{str(e)}")
-
-        if not raw_orders:
-            st.info(f"✨ 報告大總管：在 `{range_label}` 這段時間內，無任何待出貨品項登記。")
-        else:
-            df_all = pd.DataFrame(raw_orders)
-            try:
-                pm_data = supabase.table("product_master").select("product_id", "product_name", "price").execute().data
-                df_pm = pd.DataFrame(pm_data) if pm_data else pd.DataFrame()
-            except: df_pm = pd.DataFrame()
-
-            if not df_pm.empty and not df_all.empty:
-                df_all = pd.merge(df_all, df_pm, on="product_name", how="left")
-                df_all["product_id"] = df_all["product_id"].fillna("新商品")
-                df_all["price"] = pd.to_numeric(df_all["price"], errors='coerce').fillna(0.0)
+                if submit_d_c and d_c_id:
+                    if input_pwd_c == ADMIN_PASSWORD:
+                        try:
+                            supabase.table("customers").delete().eq("customer_id", d_c_id).execute()
+                            st.success(f"🗑️ 已將客戶編號『{d_c_id}』徹底抹除！")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e: st.error(f"❌ 刪除失敗: {str(e)}")
+                    else: st.error("❌ 授權密碼錯誤！")
+    
+        st.markdown("---")
+        st.subheader("📋 目前雲端客戶總覽")
+        try:
+            res = supabase.table("customers").select("*").order("customer_id").execute()
+            if res.data:
+                parsed_cust_list = []
+                for row in res.data:
+                    kw = row.get("search_keywords", "")
+                    shortcut = kw.split(" , ", 1)[0].replace("SHORTCUT:", "").strip() if "SHORTCUT:" in kw else ""
+                    line_kw = kw.split(" , ", 1)[1] if " , " in kw else ""
+                    
+                    parsed_cust_list.append({
+                        "客戶編號": row["customer_id"], "官方標準全名": row["standard_name"],
+                        "⭐ 自訂快搜/縮寫": shortcut, "🤖 系統已學會的圖片特徵": line_kw if line_kw else "尚未綁定"
+                    })
+                st.dataframe(pd.DataFrame(parsed_cust_list), use_container_width=True, hide_index=True)
+            else: st.info("💡 目前雲端內無客戶資料。")
+        except Exception as e: st.error(f"❌ 讀取雲端資料失敗: {str(e)}")
+    
+    # ====================
+    # 5. 🏪 全廠揀貨理貨大總管
+    # ====================
+    elif db_mode == "🏪 全廠揀貨理貨大總管":
+        st.title("🏪 全廠揀貨理貨大總管")
+        st.caption("🚀 專為現場設計的「純唯讀」揀貨與分貨看板，支援跨日期範圍統計，100% 防呆。")
+    
+        st.markdown("### 📅 請選擇理貨備貨日期範圍")
+        today_date = datetime.now().date()
+        selected_range = st.date_input("請選擇開始與結束日期：", value=(today_date, today_date), key="manager_date_range_input")
+    
+        if isinstance(selected_range, tuple) and len(selected_range) == 2:
+            start_date, end_date = selected_range
+            start_date_str = start_date.strftime("%Y/%m/%d")
+            end_date_str = end_date.strftime("%Y/%m/%d")
+            range_label = f"{start_date_str}" if start_date == end_date else f"{start_date_str} 至 {end_date_str}"
+            st.info(f"🔍 目前正在統計區間：`{range_label}` 的全廠單據資訊")
+    
+            raw_orders = []
+            if supabase:
+                try:
+                    res_orders = supabase.table("delivery_orders").select("*").gte("delivery_date", start_date_str).lte("delivery_date", end_date_str).eq("status", "已登記未出貨").execute()
+                    raw_orders = res_orders.data if res_orders.data else []
+                except Exception as e:
+                    st.error(f"❌ 雲端資料庫連線失敗：{str(e)}")
+    
+            if not raw_orders:
+                st.info(f"✨ 報告大總管：在 `{range_label}` 這段時間內，無任何待出貨品項登記。")
             else:
-                df_all["product_id"] = "新商品"
-                df_all["price"] = 0.0
-
-            df_all["quantity"] = pd.to_numeric(df_all["quantity"], errors='coerce').fillna(0).astype(int)
-            df_all["總金額"] = df_all["quantity"] * df_all["price"]
-
-            tab1, tab2 = st.tabs(["📊 視角 A：全廠區間總欠貨加總 (廚房/倉庫備貨專用)", "🚚 視角 B：各客戶欠貨明細表 (司機/現場分貨專用)"])
-
-            with tab1:
-                st.markdown(f"#### 🛒 倉庫與廚房總計：`{range_label}` 應拉貨大加總")
-                df_summary = df_all.groupby(["product_id", "product_name"]).agg({"quantity": "sum", "總金額": "sum"}).reset_index()
-                df_summary.columns = ["商品編號", "商品名稱", "全廠待出總數量", "預估總金額"]
-                st.dataframe(df_summary, use_container_width=True, hide_index=True)
-                
-                col_s1, col_s2 = st.columns(2)
-                col_s1.metric("📦 待出貨品項總品類", f"{len(df_summary)} 種")
-                col_s2.metric("🔢 待出貨商品總件數", f"{df_summary['全廠待出總數量'].sum()} 件")
-
-                st.download_button(label="📥 下載《全廠總揀貨備貨單 .csv》", data=df_summary.to_csv(index=False).encode('utf-8-sig'), file_name=f"全廠總揀貨單_{range_label.replace('/', '')}.csv", mime="text/csv", use_container_width=True)
-
-            with tab2:
-                st.markdown(f"#### 📦 理貨與出車：`{range_label}` 各家客戶細單")
-                df_detail = df_all[["delivery_date", "customer_name", "product_id", "product_name", "quantity", "price", "總金額"]].copy()
-                df_detail.columns = ["叫貨日期", "客戶名稱", "商品編號", "商品名稱", "待出數量", "單價", "總金額"]
-                df_detail = df_detail.sort_values(by=["客戶名稱", "叫貨日期", "商品編號"]).reset_index(drop=True)
-                st.dataframe(df_detail, use_container_width=True, hide_index=True)
-                st.download_button(label="📥 下載《各客戶分貨明細表 .csv》", data=df_detail.to_csv(index=False).encode('utf-8-sig'), file_name=f"各客戶分貨明細表_{range_label.replace('/', '')}.csv", mime="text/csv", use_container_width=True)
-    else:
-        st.warning("⏳ 請在上方日期選取器中，再次點選「結束日期」（若查詢單日，請連點兩次）。")
+                df_all = pd.DataFrame(raw_orders)
+                try:
+                    pm_data = supabase.table("product_master").select("product_id", "product_name", "price").execute().data
+                    df_pm = pd.DataFrame(pm_data) if pm_data else pd.DataFrame()
+                except: df_pm = pd.DataFrame()
+    
+                if not df_pm.empty and not df_all.empty:
+                    df_all = pd.merge(df_all, df_pm, on="product_name", how="left")
+                    df_all["product_id"] = df_all["product_id"].fillna("新商品")
+                    df_all["price"] = pd.to_numeric(df_all["price"], errors='coerce').fillna(0.0)
+                else:
+                    df_all["product_id"] = "新商品"
+                    df_all["price"] = 0.0
+    
+                df_all["quantity"] = pd.to_numeric(df_all["quantity"], errors='coerce').fillna(0).astype(int)
+                df_all["總金額"] = df_all["quantity"] * df_all["price"]
+    
+                tab1, tab2 = st.tabs(["📊 視角 A：全廠區間總欠貨加總 (廚房/倉庫備貨專用)", "🚚 視角 B：各客戶欠貨明細表 (司機/現場分貨專用)"])
+    
+                with tab1:
+                    st.markdown(f"#### 🛒 倉庫與廚房總計：`{range_label}` 應拉貨大加總")
+                    df_summary = df_all.groupby(["product_id", "product_name"]).agg({"quantity": "sum", "總金額": "sum"}).reset_index()
+                    df_summary.columns = ["商品編號", "商品名稱", "全廠待出總數量", "預估總金額"]
+                    st.dataframe(df_summary, use_container_width=True, hide_index=True)
+                    
+                    col_s1, col_s2 = st.columns(2)
+                    col_s1.metric("📦 待出貨品項總品類", f"{len(df_summary)} 種")
+                    col_s2.metric("🔢 待出貨商品總件數", f"{df_summary['全廠待出總數量'].sum()} 件")
+    
+                    st.download_button(label="📥 下載《全廠總揀貨備貨單 .csv》", data=df_summary.to_csv(index=False).encode('utf-8-sig'), file_name=f"全廠總揀貨單_{range_label.replace('/', '')}.csv", mime="text/csv", use_container_width=True)
+    
+                with tab2:
+                    st.markdown(f"#### 📦 理貨與出車：`{range_label}` 各家客戶細單")
+                    df_detail = df_all[["delivery_date", "customer_name", "product_id", "product_name", "quantity", "price", "總金額"]].copy()
+                    df_detail.columns = ["叫貨日期", "客戶名稱", "商品編號", "商品名稱", "待出數量", "單價", "總金額"]
+                    df_detail = df_detail.sort_values(by=["客戶名稱", "叫貨日期", "商品編號"]).reset_index(drop=True)
+                    st.dataframe(df_detail, use_container_width=True, hide_index=True)
+                    st.download_button(label="📥 下載《各客戶分貨明細表 .csv》", data=df_detail.to_csv(index=False).encode('utf-8-sig'), file_name=f"各客戶分貨明細表_{range_label.replace('/', '')}.csv", mime="text/csv", use_container_width=True)
+        else:
+            st.warning("⏳ 請在上方日期選取器中，再次點選「結束日期」（若查詢單日，請連點兩次）。")
