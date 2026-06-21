@@ -757,136 +757,136 @@ def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
                                 if st.button(f"🟢 {cust}", key=f"g_{current_date_str}_{cust}", use_container_width=True): show_order_detail(cust, current_date_str, "已出貨")
                     else:
                         with st.container(border=True): st.markdown("<div style='min-height:40px;'>&nbsp;</div>", unsafe_allow_html=True)
-# ==================== 3. 📦 全品項商品主檔 ====================
-elif db_mode == "📦 全品項商品主檔":  # 👈 🎯 修正重點：補上「商品」兩個字，與選單完全對齊！
-    st.header("📦 全品項商品雲端主檔 (🎯 鎖定 G 欄批價版)")
-    st.write("支援樂廚自訂商品 Excel 匯入：自動補滿類別、**放生 H 欄，精準抓取 G 欄（成本/批價）作為系統基準定價**。")
+    # ==================== 3. 📦 全品項商品主檔 ====================
+    elif db_mode == "📦 全品項商品主檔":  # 👈 🎯 修正重點：補上「商品」兩個字，與選單完全對齊！
+        st.header("📦 全品項商品雲端主檔 (🎯 鎖定 G 欄批價版)")
+        st.write("支援樂廚自訂商品 Excel 匯入：自動補滿類別、**放生 H 欄，精準抓取 G 欄（成本/批價）作為系統基準定價**。")
+        
+        ADMIN_PASSWORD = "123"  
     
-    ADMIN_PASSWORD = "123"  
-
-    # 確保連線正常才抓取
-    existing_ids = set()
-    if supabase:
-        try:
-            existing_res = supabase.table("product_master").select("product_id").execute()
-            existing_ids = {str(row['product_id']).strip() for row in existing_res.data} if existing_res.data else set()
-        except Exception as e:
-            st.warning(f"無法載入現成品項 ID 清單: {str(e)}")
-
-    with st.expander("📥 批次匯入新版商品 Excel 檔案", expanded=True):
-        p_excel_file = st.file_uploader("請選擇要匯入的商品主檔 Excel (.xlsx)", type=["xlsx"])
-        if p_excel_file:
+        # 確保連線正常才抓取
+        existing_ids = set()
+        if supabase:
             try:
-                df_p_import = pd.read_excel(p_excel_file, skiprows=1)
-                df_p_import = df_p_import.dropna(how='all')
-                df_p_import.iloc[:, 0] = df_p_import.iloc[:, 0].ffill()
-                
-                valid_rows = df_p_import[df_p_import.iloc[:, 1].notna() & df_p_import.iloc[:, 2].notna()]
-                total_read_rows = len(valid_rows)
-                st.info(f"📋 系統成功讀取！此 Excel 中包含有編號及品名的有效商品共有 **{total_read_rows}** 筆。")
-                st.dataframe(df_p_import.head(5))
-                
-                total_cols = len(df_p_import.columns)
-                if total_cols >= 7:
-                    if st.button("🚀 確認將上方全數商品匯入雲端 (鎖定 G 欄批價)"):
-                        success_p_count = 0
-                        new_product_count = 0
-
-                        def fix_unit_typo(text):
-                            if not text or text == "nan": return text
-                            return re.sub(r'([包支片盒袋罐碗顆元/\d\s])(?:香|相)', r'\1箱', str(text))
-
-                        for idx, row in df_p_import.iterrows():
-                            p_category = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else "一般類"
-                            p_id = str(row.iloc[1]).strip()
-                            p_name = str(row.iloc[2]).strip()
-                            p_unit_d = str(row.iloc[3]).strip()
-                            p_spec_e = str(row.iloc[4]).strip()
-                            p_temp_f = str(row.iloc[5]).strip()
-                            p_cost_g = str(row.iloc[6]).strip()
-
-                            p_unit_d = fix_unit_typo(p_unit_d)
-                            p_cost_g = fix_unit_typo(p_cost_g)
-
-                            p_price = 0.0
-                            if pd.notna(row.iloc[6]):
-                                price_match = re.search(r'\d+', p_cost_g)
-                                p_price = float(price_match.group()) if price_match else 0.0
-
-                            cat_info = f"類別:{p_category}"
-                            pack_info = f"包裝:{p_unit_d}" if p_unit_d and p_unit_d != "nan" else ""
-                            spec_info = f"規格:{p_spec_e}" if p_spec_e and p_spec_e != "nan" else ""
-                            temp_info = f"溫層:{p_temp_f}" if p_temp_f and p_temp_f != "nan" else ""
-                            cost_info = f"批價:{p_cost_g}" if p_cost_g and p_cost_g != "nan" else ""
-
-                            notes_list = [cat_info, pack_info, spec_info, temp_info, cost_info]
-                            final_unit_combined = " | ".join([info for info in notes_list if info.strip()])
-
-                            if p_id and p_name and p_id != "nan" and p_name != "nan" and p_id.lower() != "null":
-                                if p_id.endswith(".0"): p_id = p_id[:-2]
-                                is_new = p_id not in existing_ids
-
-                                try:
-                                    supabase.table("product_master").upsert({
-                                        "product_id": p_id,
-                                        "product_name": p_name,
-                                        "unit": final_unit_combined,
-                                        "price": p_price
-                                    }).execute()
-                                    success_p_count += 1
-                                    if is_new: new_product_count += 1
-                                except Exception:  # 🎯 修正重點：把 catch 改回 Python 的 except 
-                                    pass
-                                    
-                        st.success(f"🎉 **匯入完成！** 總處理 **{success_p_count}** 筆，全新新增 **{new_product_count}** 筆批價商品！")
-                        time.sleep(1)
-                        st.rerun()
-                else:
-                    st.error("❌ 匯入失敗：您的 Excel 欄位不足，找不到 G 欄（成本/批價）。")
+                existing_res = supabase.table("product_master").select("product_id").execute()
+                existing_ids = {str(row['product_id']).strip() for row in existing_res.data} if existing_res.data else set()
             except Exception as e:
-                st.error(f"❌ 讀取商品 Excel 發生錯誤: {str(e)}")
-
-    col_p1, col_p2 = st.columns(2)
-    with col_p1:
-        with st.form("manual_product_form", clear_on_submit=True):
-            st.subheader("➕ 手動新增 / 修正單筆商品")
-            manual_id = st.text_input("商品編號").strip()
-            manual_name = st.text_input("商品名稱").strip()
-            manual_unit = st.text_input("規格與銷售注記").strip()
-            manual_price = st.number_input("基準批價", min_value=0.0, step=1.0)
-            submit_manual_p = st.form_submit_button("儲存 / 更新商品")
-            if submit_manual_p and manual_id and manual_name:
+                st.warning(f"無法載入現成品項 ID 清單: {str(e)}")
+    
+        with st.expander("📥 批次匯入新版商品 Excel 檔案", expanded=True):
+            p_excel_file = st.file_uploader("請選擇要匯入的商品主檔 Excel (.xlsx)", type=["xlsx"])
+            if p_excel_file:
                 try:
-                    supabase.table("product_master").upsert({
-                        "product_id": manual_id,
-                        "product_name": manual_name,
-                        "unit": manual_unit,
-                        "price": manual_price
-                    }).execute()
-                    st.success(f"🎉 成功同步！商品『{manual_name}』已同步！")
-                    time.sleep(1)
-                    st.rerun()
+                    df_p_import = pd.read_excel(p_excel_file, skiprows=1)
+                    df_p_import = df_p_import.dropna(how='all')
+                    df_p_import.iloc[:, 0] = df_p_import.iloc[:, 0].ffill()
+                    
+                    valid_rows = df_p_import[df_p_import.iloc[:, 1].notna() & df_p_import.iloc[:, 2].notna()]
+                    total_read_rows = len(valid_rows)
+                    st.info(f"📋 系統成功讀取！此 Excel 中包含有編號及品名的有效商品共有 **{total_read_rows}** 筆。")
+                    st.dataframe(df_p_import.head(5))
+                    
+                    total_cols = len(df_p_import.columns)
+                    if total_cols >= 7:
+                        if st.button("🚀 確認將上方全數商品匯入雲端 (鎖定 G 欄批價)"):
+                            success_p_count = 0
+                            new_product_count = 0
+    
+                            def fix_unit_typo(text):
+                                if not text or text == "nan": return text
+                                return re.sub(r'([包支片盒袋罐碗顆元/\d\s])(?:香|相)', r'\1箱', str(text))
+    
+                            for idx, row in df_p_import.iterrows():
+                                p_category = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else "一般類"
+                                p_id = str(row.iloc[1]).strip()
+                                p_name = str(row.iloc[2]).strip()
+                                p_unit_d = str(row.iloc[3]).strip()
+                                p_spec_e = str(row.iloc[4]).strip()
+                                p_temp_f = str(row.iloc[5]).strip()
+                                p_cost_g = str(row.iloc[6]).strip()
+    
+                                p_unit_d = fix_unit_typo(p_unit_d)
+                                p_cost_g = fix_unit_typo(p_cost_g)
+    
+                                p_price = 0.0
+                                if pd.notna(row.iloc[6]):
+                                    price_match = re.search(r'\d+', p_cost_g)
+                                    p_price = float(price_match.group()) if price_match else 0.0
+    
+                                cat_info = f"類別:{p_category}"
+                                pack_info = f"包裝:{p_unit_d}" if p_unit_d and p_unit_d != "nan" else ""
+                                spec_info = f"規格:{p_spec_e}" if p_spec_e and p_spec_e != "nan" else ""
+                                temp_info = f"溫層:{p_temp_f}" if p_temp_f and p_temp_f != "nan" else ""
+                                cost_info = f"批價:{p_cost_g}" if p_cost_g and p_cost_g != "nan" else ""
+    
+                                notes_list = [cat_info, pack_info, spec_info, temp_info, cost_info]
+                                final_unit_combined = " | ".join([info for info in notes_list if info.strip()])
+    
+                                if p_id and p_name and p_id != "nan" and p_name != "nan" and p_id.lower() != "null":
+                                    if p_id.endswith(".0"): p_id = p_id[:-2]
+                                    is_new = p_id not in existing_ids
+    
+                                    try:
+                                        supabase.table("product_master").upsert({
+                                            "product_id": p_id,
+                                            "product_name": p_name,
+                                            "unit": final_unit_combined,
+                                            "price": p_price
+                                        }).execute()
+                                        success_p_count += 1
+                                        if is_new: new_product_count += 1
+                                    except Exception:  # 🎯 修正重點：把 catch 改回 Python 的 except 
+                                        pass
+                                        
+                            st.success(f"🎉 **匯入完成！** 總處理 **{success_p_count}** 筆，全新新增 **{new_product_count}** 筆批價商品！")
+                            time.sleep(1)
+                            st.rerun()
+                    else:
+                        st.error("❌ 匯入失敗：您的 Excel 欄位不足，找不到 G 欄（成本/批價）。")
                 except Exception as e:
-                    st.error(f"❌ 儲存失敗: {str(e)}")
-
-    with col_p2:
-        with st.form("delete_product_form", clear_on_submit=True):
-            st.subheader("🗑️ 刪除雲端品項")
-            del_p_id = st.text_input("輸入要刪除的商品編號").strip()
-            st.markdown("---")
-            input_pwd_p = st.text_input("🔑 管理員授權密碼", type="password")
-            submit_del_p = st.form_submit_button("🔴 確認徹底刪除該商品")
-            if submit_del_p and del_p_id:
-                if input_pwd_p == ADMIN_PASSWORD:
+                    st.error(f"❌ 讀取商品 Excel 發生錯誤: {str(e)}")
+    
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            with st.form("manual_product_form", clear_on_submit=True):
+                st.subheader("➕ 手動新增 / 修正單筆商品")
+                manual_id = st.text_input("商品編號").strip()
+                manual_name = st.text_input("商品名稱").strip()
+                manual_unit = st.text_input("規格與銷售注記").strip()
+                manual_price = st.number_input("基準批價", min_value=0.0, step=1.0)
+                submit_manual_p = st.form_submit_button("儲存 / 更新商品")
+                if submit_manual_p and manual_id and manual_name:
                     try:
-                        supabase.table("product_master").delete().eq("product_id", del_p_id).execute()
-                        st.success(f"🗑️ 已成功移除商品代號『{del_p_id}』。")
+                        supabase.table("product_master").upsert({
+                            "product_id": manual_id,
+                            "product_name": manual_name,
+                            "unit": manual_unit,
+                            "price": manual_price
+                        }).execute()
+                        st.success(f"🎉 成功同步！商品『{manual_name}』已同步！")
                         time.sleep(1)
                         st.rerun()
                     except Exception as e:
-                        st.error(f"❌ 刪除失敗: {str(e)}")
-                else:
-                    st.error("❌ 密碼錯誤：管理員授權認證失敗。")
+                        st.error(f"❌ 儲存失敗: {str(e)}")
+    
+        with col_p2:
+            with st.form("delete_product_form", clear_on_submit=True):
+                st.subheader("🗑️ 刪除雲端品項")
+                del_p_id = st.text_input("輸入要刪除的商品編號").strip()
+                st.markdown("---")
+                input_pwd_p = st.text_input("🔑 管理員授權密碼", type="password")
+                submit_del_p = st.form_submit_button("🔴 確認徹底刪除該商品")
+                if submit_del_p and del_p_id:
+                    if input_pwd_p == ADMIN_PASSWORD:
+                        try:
+                            supabase.table("product_master").delete().eq("product_id", del_p_id).execute()
+                            st.success(f"🗑️ 已成功移除商品代號『{del_p_id}』。")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ 刪除失敗: {str(e)}")
+                    else:
+                        st.error("❌ 密碼錯誤：管理員授權認證失敗。")
 
     st.markdown("---")
     st.subheader("🔍 商品主檔快速智慧查詢看板")
