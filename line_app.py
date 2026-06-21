@@ -33,9 +33,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# =================【雲端資料庫連線設定區】=================
-SUPABASE_URL = "https://ktmepyfafstgxklrwhoq.supabase.co" 
-SUPABASE_KEY = "sb_publishable_ROyxuswMSHsq0uymo9UVyw_K1qM3MYO"
+# 讓雲端與本機都能安全讀取資料庫設定
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://ktmepyfafstgxklrwhoq.supabase.co")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_R0yxusWMsHSq0uymo9UVyw_K1qM3MY0")
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
