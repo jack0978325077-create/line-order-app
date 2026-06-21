@@ -253,234 +253,224 @@ if db_mode == "Line圖片文字叫貨":
 # 💡 新增：AI 認不到人時的「智慧引導綁定彈窗」
 @st.dialog("🤖 AI 未能識別客戶：請協助綁定特徵", width="large")
 def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
-    st.markdown(f"系統從圖片中偵測到群組名稱為：`{detected_group}`，但雲端目前無此綁定。")
+st.markdown(f"系統從圖片中偵測到群組名稱為：`{detected_group}`，但雲端目前無此綁定。")
+
+action_type = st.radio("請選擇處理方式：", ["🔗 綁定到現有客戶", "✨ 建立全新客戶並綁定"], horizontal=True)
+st.markdown("---")
+
+if action_type == "🔗 綁定到現有客戶":
+    selected_opt = st.selectbox("🎯 請指定歸屬於哪位正式客戶：", options=search_options, key="dialog_link_cust")
+    if selected_opt != "請選擇或輸入文字搜尋客戶... (留空代表查詢當日全廠)":
+        target_cust = cust_mapping[selected_opt]["raw_data"]
+        if st.button("💾 確認綁定舊客", use_container_width=True):
+            old_kw = target_cust.get("search_keywords", "")
+            new_kw = f"{old_kw}, {detected_group}" if old_kw else detected_group
+            try:
+                supabase.table("customers").update({"search_keywords": new_kw}).eq("customer_id", target_cust["customer_id"]).execute()
+                # 立即灌回當前 Session 狀態，讓後續功能按鈕亮起
+                st.session_state["final_c_name"] = target_cust["standard_name"]
+                st.session_state["final_c_id"] = target_cust["customer_id"]
+                st.session_state["ai_detected_group_name"] = ""
+                st.success(f"🎉 成功！已將『{detected_group}』永久綁定至【{target_cust['standard_name']}】")
+                time.sleep(1)
+                st.rerun()
+            except Exception as le: st.error(f"寫入失敗: {str(le)}")
+            
+else:
+    new_c_id = st.text_input("🔢 新客戶編號 (例如: XV270099)").strip()
+    new_c_name = st.text_input("🏢 新客戶官方標準全名").strip()
+    if st.button("💾 創立新客並直接綁定", use_container_width=True):
+        if new_c_id and new_c_name:
+            try:
+                # 直接寫入客戶主檔，特徵直接代入
+                combined_keywords = f"SHORTCUT: , {detected_group}"
+                supabase.table("customers").insert({
+                    "customer_id": new_c_id,
+                    "standard_name": new_c_name,
+                    "search_keywords": combined_keywords
+                }).execute()
+                # 立即灌回當前 Session 狀態
+                st.session_state["final_c_name"] = new_c_name
+                st.session_state["final_c_id"] = new_c_id
+                st.session_state["ai_detected_group_name"] = ""
+                st.success(f"🎉 成功！已自動創立【{new_c_name}】並完成圖片特徵綁定！")
+                time.sleep(1)
+                st.rerun()
+            except Exception as le: st.error(f"建立新客失敗: {str(le)}")
+        else:
+            st.error("❌ 請務必填寫完整的編號與名稱！")
+
+# 這裡的縮排前方一律維持 4 個空格，對齊 if input_mode
+    uploaded_file = st.file_uploader("📤 請上傳電腦版 LINE 視窗截圖 (支援 PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
     
-    action_type = st.radio("請選擇處理方式：", ["🔗 綁定到現有客戶", "✨ 建立全新客戶並綁定"], horizontal=True)
+    if uploaded_file and api_key:
+        if st.button("⚡ 開始執行圖片 AI 智慧拆解並帶入暫存區", key="btn_img_go", use_container_width=True):
+            try:
+                client = genai.Client(api_key=api_key)
+                bytes_data = uploaded_file.getvalue()
+                pil_image = Image.open(io.BytesIO(bytes_data))
+
+                with st.spinner("⏳ 正在利用最新視覺模型解構您的 LINE 截圖..."):
+                    res_img = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=[pil_image, PROMPT_IMAGE_BRAIN]
+                    )
+                    
+                    # 🎯 修正重點：確保 re.sub 的參數緊緊連在一起，不可以斷行！
+                    raw_text = res_img.text.strip()
+                    clean_json = re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip()
+                    data_img = json.loads(clean_json, strict=False)
+                    
+                    st.session_state["unified_text_val"] = data_img.get("formatted_text", "")
+                    
+                    detected_group = clean_string(data_img.get("line_group_name", ""))
+                    found_match = False
+                    
+                    if detected_group:
+                        for c in all_customers:
+                            c_kw = clean_string(c.get("search_keywords", ""))
+                            if detected_group in c_kw or c_kw in detected_group or clean_string(c.get("standard_name")) in detected_group:
+                                st.session_state["final_c_name"] = c["standard_name"]
+                                st.session_state["final_c_id"] = c["customer_id"]
+                                st.session_state["ai_detected_group_name"] = ""
+                                found_match = True
+                                break
+                        
+                        if not found_match:
+                            st.session_state["ai_detected_group_name"] = data_img.get("line_group_name", "").strip()
+                            st.session_state["img_run_counter"] += 1
+                            dialog_bind_unknown_customer(st.session_state["ai_detected_group_name"], search_options, cust_mapping)
+                            st.stop()
+
+                    if found_match:
+                        st.success(f"🎉 圖片解構完成！已自動對齊熟客：【{st.session_state['final_c_name']}】")
+                    
+                    st.session_state["img_run_counter"] += 1
+                    time.sleep(0.5)
+                    st.rerun()
+            except Exception as img_err:
+                st.error(f"❌ 圖片視覺解析失敗，原因：{str(img_err)}")
+
     st.markdown("---")
     
-    if action_type == "🔗 綁定到現有客戶":
-        selected_opt = st.selectbox("🎯 請指定歸屬於哪位正式客戶：", options=search_options, key="dialog_link_cust")
-        if selected_opt != "請選擇或輸入文字搜尋客戶... (留空代表查詢當日全廠)":
-            target_cust = cust_mapping[selected_opt]["raw_data"]
-            if st.button("💾 確認綁定舊客", use_container_width=True):
-                old_kw = target_cust.get("search_keywords", "")
-                new_kw = f"{old_kw}, {detected_group}" if old_kw else detected_group
-                try:
-                    supabase.table("customers").update({"search_keywords": new_kw}).eq("customer_id", target_cust["customer_id"]).execute()
-                    # 立即灌回當前 Session 狀態，讓後續功能按鈕亮起
-                    st.session_state["final_c_name"] = target_cust["standard_name"]
-                    st.session_state["final_c_id"] = target_cust["customer_id"]
-                    st.session_state["ai_detected_group_name"] = ""
-                    st.success(f"🎉 成功！已將『{detected_group}』永久綁定至【{target_cust['standard_name']}】")
-                    time.sleep(1)
-                    st.rerun()
-                except Exception as le: st.error(f"寫入失敗: {str(le)}")
-                
-    else:
-        new_c_id = st.text_input("🔢 新客戶編號 (例如: XV270099)").strip()
-        new_c_name = st.text_input("🏢 新客戶官方標準全名").strip()
-        if st.button("💾 創立新客並直接綁定", use_container_width=True):
-            if new_c_id and new_c_name:
-                try:
-                    # 直接寫入客戶主檔，特徵直接代入
-                    combined_keywords = f"SHORTCUT: , {detected_group}"
-                    supabase.table("customers").insert({
-                        "customer_id": new_c_id,
-                        "standard_name": new_c_name,
-                        "search_keywords": combined_keywords
-                    }).execute()
-                    # 立即灌回當前 Session 狀態
-                    st.session_state["final_c_name"] = new_c_name
-                    st.session_state["final_c_id"] = new_c_id
-                    st.session_state["ai_detected_group_name"] = ""
-                    st.success(f"🎉 成功！已自動創立【{new_c_name}】並完成圖片特徵綁定！")
-                    time.sleep(1)
-                    st.rerun()
-                except Exception as le: st.error(f"建立新客失敗: {str(le)}")
-            else:
-                st.error("❌ 請務必填寫完整的編號與名稱！")
+    dynamic_box_key = f"txt_area_unified_v_{st.session_state['img_run_counter']}"
+    unified_text = st.text_area(
+        "📋 圖片/文字叫貨拆解暫存區 (可自由增刪修改內容)", 
+        value=st.session_state["unified_text_val"], 
+        height=200, 
+        key=dynamic_box_key
+    )
 
-        # 💡 圖片上傳介面與 AI 拆解主邏輯
-        uploaded_file = st.file_uploader("📤 請上傳電腦版 LINE 視窗截圖 (支援 PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
+    if unified_text.strip() and not has_customer:
+        st.warning("⚠️ **【請注意】** AI 已抓出文字，但「尚未選定對帳客戶」！請手動在最上方下拉選單指定客戶。")
+
+    if unified_text and api_key:
+        pure_text = clean_line_noise(unified_text)
+        btn_col1, btn_col2 = st.columns(2)
         
-        if uploaded_file and api_key:
-            if st.button("⚡ 開始執行圖片 AI 智慧拆解並帶入暫存區", key="btn_img_go", use_container_width=True):
+        with btn_col1:
+            if st.button("📦 這些品項均『登記需出貨品項』(存入雲端)", key="btn_all_ship_go", use_container_width=True, disabled=not has_customer):
                 try:
                     client = genai.Client(api_key=api_key)
-                    bytes_data = uploaded_file.getvalue()
-                    pil_image = Image.open(io.BytesIO(bytes_data))
-
-                    with st.spinner("⏳ 正在利用最新視覺模型解構您的 LINE 截圖..."):
-                        res_img = client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=[pil_image, PROMPT_IMAGE_BRAIN]
-                        )
+                    with st.spinner("⏳ 正在將今日品項合併儲存至雲端..."):
+                        res_a = client.models.generate_content(model='gemini-2.5-flash', contents=[pure_text, PROMPT_CLEAN_A])
+                        clean_res_a = re.sub(r"^```json\s*|```$", "", res_a.text.strip(), flags=re.MULTILINE).strip()
+                        items_a = json.loads(clean_res_a, strict=False).get("items", [])
                         
-                        raw_text = res_img.text.strip()
-                        clean_json = re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip()
-                        data_img = json.loads(clean_json, strict=False)
+                        prod_master_db = supabase.table("product_master").select("*").execute()
+                        master_products = prod_master_db.data if prod_master_db.data else []
                         
-                        # 先把文字抓下來儲存
-                        st.session_state["unified_text_val"] = data_img.get("formatted_text", "")
-                        
-                        # AI 認人與匹配綁定
-                        detected_group = clean_string(data_img.get("line_group_name", ""))
-                        found_match = False
-                        
-                        if detected_group:
-                            for c in all_customers:
-                                c_kw = clean_string(c.get("search_keywords", ""))
-                                if detected_group in c_kw or c_kw in detected_group or clean_string(c.get("standard_name")) in detected_group:
-                                    st.session_state["final_c_name"] = c["standard_name"]
-                                    st.session_state["final_c_id"] = c["customer_id"]
-                                    st.session_state["ai_detected_group_name"] = ""
-                                    found_match = True
+                        for item_a in items_a:
+                            raw_name_a = str(item_a.get("raw_item_name", "")).strip()
+                            ultra_clean_a = advanced_clean_product_name(raw_name_a)
+                            qty_a = int(pd.to_numeric(item_a.get("quantity", 1), errors='coerce') or 1)
+                            
+                            std_prod_name = raw_name_a
+                            for p in master_products:
+                                db_p_name = p.get("product_name", "")
+                                if advanced_clean_product_name(db_p_name) in ultra_clean_a or ultra_clean_a in advanced_clean_product_name(db_p_name):
+                                    std_prod_name = db_p_name
                                     break
                             
-                            # 🎯 重點：如果 AI 有抓到群組名稱，但資料庫完全沒有這個人的特徵
-                            if not found_match:
-                                st.session_state["ai_detected_group_name"] = data_img.get("line_group_name", "").strip()
-                                st.session_state["img_run_counter"] += 1
-                                # 觸發彈窗
-                                dialog_bind_unknown_customer(st.session_state["ai_detected_group_name"], search_options, cust_mapping)
-                                st.stop() # 中斷後面渲染，強迫使用者先在彈窗做決定
+                            check_exist = supabase.table("delivery_orders").select("*").eq("customer_name", st.session_state["final_c_name"]).eq("product_name", std_prod_name).eq("status", "已登記未出貨").eq("delivery_date", final_date).execute()
+                            if check_exist.data:
+                                supabase.table("delivery_orders").update({"quantity": int(check_exist.data[0]["quantity"]) + qty_a}).eq("id", check_exist.data[0]["id"]).execute()
+                            else:
+                                supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": std_prod_name, "quantity": qty_a, "status": "已登記未出貨"}).execute()
 
-                        if found_match:
-                            st.success(f"🎉 圖片解構完成！已自動對齊熟客：【{st.session_state['final_c_name']}】")
-                        
-                        st.session_state["img_run_counter"] += 1
+                        st.session_state["unified_text_val"] = ""
+                        st.session_state["trigger_recalc"] = True
+                        st.success("🎉 明細已順利存入雲端蓄水池！")
                         time.sleep(0.5)
                         st.rerun()
-                except Exception as img_err:
-                    st.error(f"❌ 圖片視覺解析失敗，原因：{str(img_err)}")
-
-        st.markdown("---")
-        
-        dynamic_box_key = f"txt_area_unified_v_{st.session_state['img_run_counter']}"
-        unified_text = st.text_area(
-            "📋 圖片/文字叫貨拆解暫存區 (可自由增刪修改內容)", 
-            value=st.session_state["unified_text_val"], 
-            height=200, 
-            key=dynamic_box_key
-        )
-
-        if unified_text.strip() and not has_customer:
-            st.warning("⚠️ **【請注意】** AI 已抓出文字，但「尚未選定對帳客戶」！請手動在最上方下拉選單指定客戶，功能才會點亮解鎖。")
-
-        if unified_text and api_key:
-            pure_text = clean_line_noise(unified_text)
-            btn_col1, btn_col2 = st.columns(2)
-            
-            with btn_col1:
-                if st.button("📦 這些品項均『登記需出貨品項』(存入雲端)", key="btn_all_ship_go", use_container_width=True, disabled=not has_customer):
-                    try:
-                        client = genai.Client(api_key=api_key)
-                        with st.spinner("⏳ 正在將今日品項合併儲存至雲端..."):
-                            res_a = client.models.generate_content(model='gemini-2.5-flash', contents=[pure_text, PROMPT_CLEAN_A])
-                            clean_res_a = re.sub(r"^```json\s*|```$", "", res_a.text.strip(), flags=re.MULTILINE).strip()
-                            items_a = json.loads(clean_res_a, strict=False).get("items", [])
-                            
-                            # 讀取商品主檔
-                            prod_master_db = supabase.table("product_master").select("*").execute()
-                            master_products = prod_master_db.data if prod_master_db.data else []
-                            
-                            for item_a in items_a:
-                                raw_name_a = str(item_a.get("raw_item_name", "")).strip()
-                                ultra_clean_a = advanced_clean_product_name(raw_name_a)
-                                qty_a = int(pd.to_numeric(item_a.get("quantity", 1), errors='coerce') or 1)
-                                
-                                std_prod_name = raw_name_a
-                                for p in master_products:
-                                    db_p_name = p.get("product_name", "")
-                                    if advanced_clean_product_name(db_p_name) in ultra_clean_a or ultra_clean_a in advanced_clean_product_name(db_p_name):
-                                        std_prod_name = db_p_name
-                                        break
-                                
-                                check_exist = supabase.table("delivery_orders").select("*").eq("customer_name", st.session_state["final_c_name"]).eq("product_name", std_prod_name).eq("status", "已登記未出貨").eq("delivery_date", final_date).execute()
-                                if check_exist.data:
-                                    supabase.table("delivery_orders").update({"quantity": int(check_exist.data[0]["quantity"]) + qty_a}).eq("id", check_exist.data[0]["id"]).execute()
-                                else:
-                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": std_prod_name, "quantity": qty_a, "status": "已登記未出貨"}).execute()
-
-                            st.session_state["unified_text_val"] = ""
-                            st.session_state["trigger_recalc"] = True
-                            st.success("🎉 明細已順利存入雲端蓄水池！")
-                            time.sleep(0.5)
-                            st.rerun()
-                    except Exception as err: 
-                        st.error(f"❌ 登記失敗：{str(err)}")
+                except Exception as err: st.error(f"❌ 登記失敗：{str(err)}")
+                    
+        with btn_col2:
+            if st.button("❌ 這些品項『目前無出貨』，其餘品項均出貨", key="btn_remain_b_go", use_container_width=True, disabled=not has_customer):
+                try:
+                    client = genai.Client(api_key=api_key)
+                    with st.spinner("⏳ 自動核銷並結轉欠貨軌跡中..."):
+                        pool_res = supabase.table("delivery_orders").select("*").eq("customer_name", st.session_state["final_c_name"]).eq("status", "已登記未出貨").execute()
+                        pool_list = pool_res.data if pool_res.data else []
                         
-            with btn_col2:
-                if st.button("❌ 這些品項『目前無出貨』，其餘品項均出貨", key="btn_remain_b_go", use_container_width=True, disabled=not has_customer):
-                    try:
-                        client = genai.Client(api_key=api_key)
-                        with st.spinner("⏳ 自動核銷並結轉欠貨軌跡中..."):
-                            pool_res = supabase.table("delivery_orders").select("*").eq("customer_name", st.session_state["final_c_name"]).eq("status", "已登記未出貨").execute()
-                            pool_list = pool_res.data if pool_res.data else []
+                        pool_dict = {}
+                        for x in pool_list:
+                            p_name = x["product_name"]
+                            pool_dict[p_name] = pool_dict.get(p_name, 0) + int(x["quantity"])
+
+                        res_b = client.models.generate_content(model='gemini-2.5-flash', contents=[pure_text, PROMPT_CLEAN_B])
+                        clean_res_b = re.sub(r"^```json\s*|
+```$", "", res_b.text.strip(), flags=re.MULTILINE).strip()
+                        items_b = json.loads(clean_res_b, strict=False).get("items", [])
+                        
+                        b_cleaned_dict = {}
+                        for b_item in items_b:
+                            b_n = str(b_item.get("raw_item_name", "")).strip()
+                            b_q = int(pd.to_numeric(b_item.get("quantity", 0), errors='coerce') or 0)
+                            if b_n and b_q > 0: b_cleaned_dict[advanced_clean_product_name(b_n)] = b_q
+
+                        for prod_name in pool_dict.keys():
+                            supabase.table("delivery_orders").delete().eq("customer_name", st.session_state["final_c_name"]).eq("product_name", prod_name).eq("status", "已登記未出貨").execute()
+
+                        pm_db = supabase.table("product_master").select("product_id", "product_name", "price").execute().data
+                        p_dict = {p["product_name"]: p for p in pm_db} if pm_db else {}
+
+                        excel_rows = []
+                        for prod_name, total_pool_qty in pool_dict.items():
+                            clean_pool_name = advanced_clean_product_name(prod_name)
+                            matched_b_qty = 0
+                            for b_k, b_v in b_cleaned_dict.items():
+                                if b_k in clean_pool_name or clean_pool_name in b_k:
+                                    matched_b_qty = b_v
+                                    break
                             
-                            pool_dict = {}
-                            for x in pool_list:
-                                p_name = x["product_name"]
-                                pool_dict[p_name] = pool_dict.get(p_name, 0) + int(x["quantity"])
-
-                            res_b = client.models.generate_content(model='gemini-2.5-flash', contents=[pure_text, PROMPT_CLEAN_B])
-                            clean_res_b = re.sub(r"^```json\s*|```$", "", res_b.text.strip(), flags=re.MULTILINE).strip()
-                            items_b = json.loads(clean_res_b, strict=False).get("items", [])
+                            actual_ship = max(0, total_pool_qty - matched_b_qty)
                             
-                            b_cleaned_dict = {}
-                            for b_item in items_b:
-                                b_n = str(b_item.get("raw_item_name", "")).strip()
-                                b_q = int(pd.to_numeric(b_item.get("quantity", 0), errors='coerce') or 0)
-                                if b_n and b_q > 0:
-                                    b_cleaned_dict[advanced_clean_product_name(b_n)] = b_q
+                            if actual_ship > 0:
+                                supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": prod_name, "quantity": actual_ship, "status": "已出貨"}).execute()
+                                pr_info = p_dict.get(prod_name, {})
+                                excel_rows.append({
+                                    "單據類型": "出貨", "訂單編號": "LINE一鍵智慧核銷", "客戶編號": str(st.session_state["final_c_id"]),
+                                    "客戶名稱": str(st.session_state["final_c_name"]), "日期": str(final_date),
+                                    "商品編號": str(pr_info.get("product_id", "新編號")), "商品名稱": str(prod_name),
+                                    "數量": actual_ship, "單價": float(pr_info.get("price", 0)), "總金額": float(pr_info.get("price", 0)) * actual_ship
+                                })
 
-                            # 大清倉舊帳
-                            for prod_name in pool_dict.keys():
-                                supabase.table("delivery_orders").delete().eq("customer_name", st.session_state["final_c_name"]).eq("product_name", prod_name).eq("status", "已登記未出貨").execute()
+                            if matched_b_qty > 0:
+                                supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": prod_name, "quantity": matched_b_qty, "status": "已登記未出貨"}).execute()
 
-                            pm_db = supabase.table("product_master").select("product_id", "product_name", "price").execute().data
-                            p_dict = {p["product_name"]: p for p in pm_db} if pm_db else {}
+                        if excel_rows:
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                                pd.DataFrame(excel_rows).to_excel(writer, index=False, sheet_name='本次核銷出貨明細')
+                            st.session_state[excel_ready_key] = output.getvalue()
 
-                            excel_rows = []
-                            table_rows_preview = []
-
-                            for prod_name, total_pool_qty in pool_dict.items():
-                                clean_pool_name = advanced_clean_product_name(prod_name)
-                                matched_b_qty = 0
-                                for b_k, b_v in b_cleaned_dict.items():
-                                    if b_k in clean_pool_name or clean_pool_name in b_k:
-                                        matched_b_qty = b_v
-                                        break
-                                
-                                actual_ship = max(0, total_pool_qty - matched_b_qty)
-                                
-                                if actual_ship > 0:
-                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": prod_name, "quantity": actual_ship, "status": "已出貨"}).execute()
-                                    pr_info = p_dict.get(prod_name, {})
-                                    excel_rows.append({
-                                        "單據類型": "出貨", "訂單編號": "LINE一鍵智慧核銷", "客戶編號": str(st.session_state["final_c_id"]),
-                                        "客戶名稱": str(st.session_state["final_c_name"]), "日期": str(final_date),
-                                        "商品編號": str(pr_info.get("product_id", "新編號")), "商品名稱": str(prod_name),
-                                        "數量": actual_ship, "單價": float(pr_info.get("price", 0)), "總金額": float(pr_info.get("price", 0)) * actual_ship
-                                    })
-
-                                if matched_b_qty > 0:
-                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": prod_name, "quantity": matched_b_qty, "status": "已登記未出貨"}).execute()
-
-                            if excel_rows:
-                                output = io.BytesIO()
-                                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                                    pd.DataFrame(excel_rows).to_excel(writer, index=False, sheet_name='本次核銷出貨明細')
-                                st.session_state[excel_ready_key] = output.getvalue()
-
-                            st.session_state["unified_text_val"] = ""
-                            st.session_state["trigger_recalc"] = True
-                            st.success("🎉 核銷處理完成！已重新生成定格帳目軌跡！")
-                            time.sleep(0.5)
-                            st.rerun()
-                    except Exception as err: 
-                        st.error(f"❌ 核銷失敗：{str(err)}")
-
+                        st.session_state["unified_text_val"] = ""
+                        st.session_state["trigger_recalc"] = True
+                        st.success("🎉 核銷處理完成！已重新生成定格帳目軌跡！")
+                        time.sleep(0.5)
+                        st.rerun()
+                except Exception as err: st.error(f"❌ 核銷失敗：{str(err)}")
     # --- ✍️ 純文字複製貼上模式 ---
     else:
         txt_col_a, txt_col_b = st.columns(2)
