@@ -655,8 +655,8 @@ if db_mode == "Line圖片文字叫貨":
                                 if check_shipped.data:
                                     supabase.table("delivery_orders").update({"quantity": int(check_shipped.data[0]["quantity"]) + act_qty}).eq("id", check_shipped.data[0]["id"]).execute()
                                 else:
-                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name", p_name, "quantity": act_qty, "status": "已出貨"}).execute()
-                            
+                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": act_qty, "status": "已出貨"}).execute()
+                                    
                             if rem_qty > 0:
                                 supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": rem_qty, "status": "已登記未出貨"}).execute()
                         try:
