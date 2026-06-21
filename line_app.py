@@ -34,7 +34,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =================【雲端資料庫連線設定區】=================
-SUPABASE_URL = "https://ktmepyfafstgxklrwhoq.supabase.co" 
+SUPABASE_URL = "https://ktmepyfafstgxklrwhoq.supabase.co"
 SUPABASE_KEY = "sb_publishable_ROyxuswMSHsq0uymo9UVyw_K1qM3MYO"
 
 try:
