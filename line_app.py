@@ -29,6 +29,7 @@ st.markdown("""
         border-radius: 8px;
         padding: 0.5rem 1rem;
         font-weight: 600;
+        width: 100%;
     }
     html, body, [data-testid="stAppViewContainer"] {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans CJK TC", sans-serif;
@@ -36,18 +37,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# =================【雲端資料庫連線設定區】=================
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://ktmepyfafstgxklrwhoq.supabase.co")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_R0yxusWMsHSq0uymo9UVyw_K1qM3MY0")
+# =================【雲端資料庫連線設定區：強行對接版】=================
+SUPABASE_URL = "https://ktmepyfafstgxklrwhoq.supabase.co"
+# 直接回歸你最初公開的 Anon Key，最安全、最防呆
+SUPABASE_KEY = "sb_publishable_ROyxuswMSHsq0uymo9UVyw_K1qM3MY0"
 
 try:
-    if SUPABASE_URL and SUPABASE_KEY:
-        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    else:
-        st.error("❌ 雲端資料庫連線失敗：請檢查 Streamlit Secrets 後台金鑰是否配置完整。")
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except Exception as e:
     st.error(f"❌ 雲端資料庫連線初始化失敗: {str(e)}")
-# =========================================================
+# ==============================================================================
 
 st.sidebar.markdown("## 🗂️ 系統功能導航後台")
 db_mode = st.sidebar.radio(
@@ -65,7 +64,7 @@ def clean_string(name_str):
     if not name_str: return ""
     return str(name_str).strip().replace(" ", "").lower()
 
-# ==================== 1. Line圖片文字叫貨 (智慧三合一查詢與防呆終極版) ====================
+# ==================== 1. Line圖片文字叫貨 ====================
 if db_mode == "Line圖片文字叫貨":  
     st.title("LINE 熟客叫貨智慧扣帳自動導航系統 🚀")
     
@@ -175,9 +174,8 @@ if db_mode == "Line圖片文字叫貨":
     st.markdown("---")
     input_mode = st.radio("請選擇對帳輸入模式：", ["📸 圖片截圖上傳模式", "✍️ 純文字複製貼上模式"], horizontal=True, index=1)
     
-    api_key = st.secrets.get("GEMINI_API_KEY", "")
-    if not api_key:
-        api_key = st.sidebar.text_input("Gemini API Key", value="", type="password")
+    # 智慧型：自動偵測有沒有免打密碼的金鑰，如果有就直接帶入
+    api_key = st.secrets.get("GEMINI_API_KEY", "AQ.Ab8RN6K7Kir0lqgMowA52Bo5tLY23cn7_lQ9dJhAvHPm913iSA")
 
     if input_mode == "📸 圖片截圖上傳模式":
         PROMPT_IMAGE_BRAIN = (
@@ -657,7 +655,7 @@ if db_mode == "Line圖片文字叫貨":
                                 if check_shipped.data:
                                     supabase.table("delivery_orders").update({"quantity": int(check_shipped.data[0]["quantity"]) + act_qty}).eq("id", check_shipped.data[0]["id"]).execute()
                                 else:
-                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": act_qty, "status": "已出貨"}).execute()
+                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name", p_name, "quantity": act_qty, "status": "已出貨"}).execute()
                             
                             if rem_qty > 0:
                                 supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": rem_qty, "status": "已登記未出貨"}).execute()
@@ -691,7 +689,7 @@ if db_mode == "Line圖片文字叫貨":
                             time.sleep(0.5)
                             st.rerun()
         else:
-            st.warning("⚠️ 提示：當前處於『歷史跨日累計』或『全廠總覽』的純瀏覽狀態下，系統已自動鎖定核銷按鈕以防帳目錯亂。如需結帳，請取消勾選歷史累計並指定正確客戶與日期。")
+            st.warning("⚠️ 提示：當前處於『歷史跨日累計』或『全廠總覽』的純瀏覽狀態下，系統已自動鎖定核銷按鈕以防帳目錯亂。如需結帳，請取消勾選歷史累計並指定可靠客戶與日期。")
     else:
         st.info("💡 當前查詢條件下，雲端蓄水池內無任何待出貨品項登記。")
 
@@ -800,7 +798,7 @@ elif db_mode == "📦 全品項商品主檔":
 
                         def fix_unit_typo(text):
                             if not text or text == "nan": return text
-                            return re.sub(r'([包支片盒袋罐碗顆元/\d\s])(?:香|相)', r'\1箱', str(text))
+                            return re.sub(r'([包支片盒袋罐碗顆元/\d\s])(香|相)', r'\1箱', str(text))
 
                         for idx, row in df_p_import.iterrows():
                             p_category = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else "一般類"
