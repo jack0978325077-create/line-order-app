@@ -1,6 +1,5 @@
-streamlit
-google-genai
-supabase
 pandas
+google-genai
 pillow
+supabase
 st-theme
