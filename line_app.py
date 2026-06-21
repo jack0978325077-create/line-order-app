@@ -52,7 +52,7 @@ db_mode = st.sidebar.radio(
       "📦 全品項商品主檔",
       "🏢 管理客戶主檔",
       "🏪 全廠揀貨理貨大總管"
-    ]
+  ]
 )
 
 def clean_string(name_str):
