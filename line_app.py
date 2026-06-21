@@ -421,7 +421,6 @@ def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
                             p_name = x["product_name"]
                             pool_dict[p_name] = pool_dict.get(p_name, 0) + int(x["quantity"])
 
-                        # 🎯 這裡已經幫你把斷行拉直，合併為完整一行，再也不會噴 SyntaxError 了！
                         res_b = client.models.generate_content(model='gemini-2.5-flash', contents=[pure_text, PROMPT_CLEAN_B])
                         clean_res_b = re.sub(r"^```json\s*|```$", "", res_b.text.strip(), flags=re.MULTILINE).strip()
                         items_b = json.loads(clean_res_b, strict=False).get("items", [])
@@ -473,7 +472,9 @@ def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
                         st.success("🎉 核銷處理完成！已重新生成定格帳目軌跡！")
                         time.sleep(0.5)
                         st.rerun()
-                except Exception as err: st.error(f"❌ 核銷失敗：{str(err)}")
+                except Exception as err: 
+                    # 🎯 修正重點：把這個 except 補回來，try-except 結構就完整了！
+                    st.error(f"❌ 核銷失敗：{str(err)}")
     # --- ✍️ 純文字複製貼上模式 ---
     else:
         txt_col_a, txt_col_b = st.columns(2)
