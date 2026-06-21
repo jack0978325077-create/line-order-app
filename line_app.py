@@ -784,8 +784,9 @@ elif db_mode == "📦 全品項商品主檔":  # 👈 🎯 修正重點：補上
                                     }).execute()
                                     success_p_count += 1
                                     if is_new: new_product_count += 1
-                                catch: pass
-
+                                except Exception:  # 🎯 修正重點：把 catch 改回 Python 的 except 
+                                    pass
+                                    
                         st.success(f"🎉 **匯入完成！** 總處理 **{success_p_count}** 筆，全新新增 **{new_product_count}** 筆批價商品！")
                         time.sleep(1)
                         st.rerun()
