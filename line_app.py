@@ -382,7 +382,7 @@ if db_mode == "Line圖片文字叫貨":
                                 try:
                                     prod_master_db = supabase.table("product_master").select("*").execute()
                                     master_products = prod_master_db.data if prod_master_db.data else []
-                                Chiara: master_products = []
+                                except: master_products = []
 
                                 # 滾動歷史未出舊帳日期到今天
                                 try:
