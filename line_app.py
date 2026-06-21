@@ -60,7 +60,7 @@ def clean_string(name_str):
   return str(name_str).strip().replace(" ", "").replace(" ", "").lower()
 
 # ==================== 1. Line圖片文字叫貨 (智慧三合一查詢與防呆終極版) ====================
-if db_mode == "Line圖片文字叫貨":  
+if db_mode == "Line圖片文字叫貨"  
     st.title("LINE 熟客叫貨智慧扣帳自動導航系統 🚀")
     
     # 🌟 方案 B 的超級無形剪刀：自動蒸發所有括號、小表情、空格與加號
