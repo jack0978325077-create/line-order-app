@@ -13,7 +13,7 @@ import re
 from supabase import create_client, Client
 
 st.set_page_config(
-    page_title="LINE熟客叫貨智慧系統",
+    page_title="LINE 熟客叫貨智慧系統",
     page_icon="📦",
     layout="wide",                # 👈 Windows / Mac 寬螢幕會自動撐滿，不會縮在中間
     initial_sidebar_state="auto"  # 👈 手機版開啟時側邊欄會自動收合，不擋大框框
