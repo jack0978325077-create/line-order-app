@@ -56,8 +56,8 @@ db_mode = st.sidebar.radio(
 )
 
 def clean_string(name_str):
-    if not name_str: return ""
-    return str(name_str).strip().replace(" ", "").replace(" ", "").lower()
+  if not name_str: return ""
+  return str(name_str).strip().replace(" ", "").replace(" ", "").lower()
 
 # ==================== 1. Line圖片文字叫貨 (智慧三合一查詢與防呆終極版) ====================
 if db_mode == "Line圖片文字叫貨":  
