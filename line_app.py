@@ -13,28 +13,27 @@ import re
 from supabase import create_client, Client
 
 st.set_page_config(
-    page_title="LINE 熟客叫貨智慧系統",
-    page_icon="📦",
-    layout="wide",                # 👈 Windows / Mac 寬螢幕會自動撐滿，不會縮在中間
-    initial_sidebar_state="auto"  # 👈 手機版開啟時側邊欄會自動收合，不擋大框框
+    page_title="LINE 熟客叫貨智慧系統",
+    page_icon="📦",
+    layout="wide",
+    initial_sidebar_state="auto"
 )
 
-# 📱 注入全平台 CSS 自適應微調 (緊接著貼在 config 下方即可)
+# 📱 注入全平台 CSS 自適應微調
 st.markdown("""
-    <style>
-    .stButton>button {
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-    }
-    html, body, [data-testid="stAppViewContainer"] {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans CJK TC", sans-serif;
-    }
-    </style>
+    <style>
+    .stButton>button {
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
+    }
+    html, body, [data-testid="stAppViewContainer"] {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans CJK TC", sans-serif;
+    }
+    </style>
 """, unsafe_allow_html=True)
 
 # =================【雲端資料庫連線設定區】=================
-# 優先自動讀取 Streamlit 後台的 Secrets 密鑰，若沒有則使用下方最精準的官方標準金鑰
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://ktmepyfafstgxklrwhoq.supabase.co")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "sb_publishable_R0yxusWMsHSq0uymo9UVyw_K1qM3MY0")
 
@@ -44,19 +43,19 @@ try:
     else:
         st.error("❌ 雲端資料庫連線失敗：請檢查 Streamlit Secrets 後台金鑰是否配置完整。")
 except Exception as e:
-    st.error(f"❌ 雲端資料庫連線初始化失敗: {str(e)}\n🛠️ 建議解決辦法：請檢查密鑰是否複製完整。")
+    st.error(f"❌ 雲端資料庫連線初始化失敗: {str(e)}")
 # =========================================================
 
 st.sidebar.markdown("## 🗂️ 系統功能導航後台")
 db_mode = st.sidebar.radio(
-    "請選擇操作功能：", 
-    [
-        "Line圖片文字叫貨",        # 🎯 統一新功能名稱
-        "🚚 配送排單行事曆",
-        "📦 全品項商品主檔",
-        "🏢 管理客戶主檔" ,
-        "🏪 全廠揀貨理貨大總管"
-    ]
+    "請選擇操作功能：", 
+    [
+        "Line圖片文字叫貨",
+        "🚚 配送排單行事曆",
+        "📦 全品項商品主檔",
+        "🏢 管理客戶主檔",
+        "🏪 全廠揀貨理貨大總管"
+    ]
 )
 
 def clean_string(name_str):
