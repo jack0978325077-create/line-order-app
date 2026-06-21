@@ -250,52 +250,109 @@ if db_mode == "Line圖片文字叫貨":
     input_mode = st.sidebar.radio("對帳輸入模式：", ["📸 圖片截圖上傳模式", "✍️ 純文字複製貼上模式"], index=1, horizontal=True)
     api_key = st.sidebar.text_input("Gemini API Key", value="AQ.Ab8RN6K7Kir0lqgMowA52Bo5tLY23cn7_lQ9dJhAvHPm913iSA", type="password")
 
-    # --- 📸 圖片上傳截圖模式 ---
-    if input_mode == "📸 圖片截圖上傳模式":
-        PROMPT_IMAGE_BRAIN = (
-            "You are a professional logistics order analyzer. Analyze this LINE chat screenshot.\n"
-            "1. Detect the Line Group Name or Title at the very top if available. Return it in 'line_group_name'.\n"
-            "2. Extract all order items. Format each item on a new line as: 'Product_Name Quantity'.\n"
-            "Return JSON format only: {'line_group_name': '群組名', 'formatted_text': '品項1 數量\\n品項2 數量'}"
-        )
+    # 💡 新增：AI 認不到人時的「智慧引導綁定彈窗」
+        @st.dialog("🤖 AI 未能識別客戶：請協助綁定特徵", width="large")
+        def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
+            st.markdown(f"系統從圖片中偵測到群組名稱為：`{detected_group}`，但雲端目前無此綁定。")
+            
+            action_type = st.radio("請選擇處理方式：", ["🔗 綁定到現有客戶", "✨ 建立全新客戶並綁定"], horizontal=True)
+            st.markdown("---")
+            
+            if action_type == "🔗 綁定到現有客戶":
+                selected_opt = st.selectbox("🎯 請指定歸屬於哪位正式客戶：", options=search_options, key="dialog_link_cust")
+                if selected_opt != "請選擇或輸入文字搜尋客戶... (留空代表查詢當日全廠)":
+                    target_cust = cust_mapping[selected_opt]["raw_data"]
+                    if st.button("💾 確認綁定舊客", use_container_width=True):
+                        old_kw = target_cust.get("search_keywords", "")
+                        new_kw = f"{old_kw}, {detected_group}" if old_kw else detected_group
+                        try:
+                            supabase.table("customers").update({"search_keywords": new_kw}).eq("customer_id", target_cust["customer_id"]).execute()
+                            # 立即灌回當前 Session 狀態，讓後續功能按鈕亮起
+                            st.session_state["final_c_name"] = target_cust["standard_name"]
+                            st.session_state["final_c_id"] = target_cust["customer_id"]
+                            st.session_state["ai_detected_group_name"] = ""
+                            st.success(f"🎉 成功！已將『{detected_group}』永久綁定至【{target_cust['standard_name']}】")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as le: st.error(f"寫入失敗: {str(le)}")
+                        
+            else:
+                new_c_id = st.text_input("🔢 新客戶編號 (例如: XV270099)").strip()
+                new_c_name = st.text_input("🏢 新客戶官方標準全名").strip()
+                if st.button("💾 創立新客並直接綁定", use_container_width=True):
+                    if new_c_id and new_c_name:
+                        try:
+                            # 直接寫入客戶主檔，特徵直接代入
+                            combined_keywords = f"SHORTCUT: , {detected_group}"
+                            supabase.table("customers").insert({
+                                "customer_id": new_c_id,
+                                "standard_name": new_c_name,
+                                "search_keywords": combined_keywords
+                            }).execute()
+                            # 立即灌回當前 Session 狀態
+                            st.session_state["final_c_name"] = new_c_name
+                            st.session_state["final_c_id"] = new_c_id
+                            st.session_state["ai_detected_group_name"] = ""
+                            st.success(f"🎉 成功！已自動創立【{new_c_name}】並完成圖片特徵綁定！")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as le: st.error(f"建立新客失敗: {str(le)}")
+                    else:
+                        st.error("❌ 請務必填寫完整的編號與名稱！")
 
-        uploaded_file = st.file_uploader("📤 請上傳電腦版 LINE 視窗截圖", type=["png", "jpg", "jpeg"])
+        # 💡 圖片上傳介面與 AI 拆解主邏輯
+        uploaded_file = st.file_uploader("📤 請上傳電腦版 LINE 視窗截圖 (支援 PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
         
         if uploaded_file and api_key:
-            if st.button("⚡ 開始執行圖片 AI 智慧拆解", key="btn_img_go", use_container_width=True):
+            if st.button("⚡ 開始執行圖片 AI 智慧拆解並帶入暫存區", key="btn_img_go", use_container_width=True):
                 try:
                     client = genai.Client(api_key=api_key)
                     bytes_data = uploaded_file.getvalue()
                     pil_image = Image.open(io.BytesIO(bytes_data))
 
-                    with st.spinner("⏳ 最新視覺模型解構截圖中..."):
+                    with st.spinner("⏳ 正在利用最新視覺模型解構您的 LINE 截圖..."):
                         res_img = client.models.generate_content(
                             model='gemini-2.5-flash',
                             contents=[pil_image, PROMPT_IMAGE_BRAIN]
                         )
+                        
                         raw_text = res_img.text.strip()
                         clean_json = re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip()
                         data_img = json.loads(clean_json, strict=False)
                         
-                        # 認人邏輯
+                        # 先把文字抓下來儲存
+                        st.session_state["unified_text_val"] = data_img.get("formatted_text", "")
+                        
+                        # AI 認人與匹配綁定
                         detected_group = clean_string(data_img.get("line_group_name", ""))
+                        found_match = False
+                        
                         if detected_group:
-                            st.session_state["ai_detected_group_name"] = detected_group
                             for c in all_customers:
                                 c_kw = clean_string(c.get("search_keywords", ""))
                                 if detected_group in c_kw or c_kw in detected_group or clean_string(c.get("standard_name")) in detected_group:
                                     st.session_state["final_c_name"] = c["standard_name"]
                                     st.session_state["final_c_id"] = c["customer_id"]
                                     st.session_state["ai_detected_group_name"] = ""
+                                    found_match = True
                                     break
+                            
+                            # 🎯 重點：如果 AI 有抓到群組名稱，但資料庫完全沒有這個人的特徵
+                            if not found_match:
+                                st.session_state["ai_detected_group_name"] = data_img.get("line_group_name", "").strip()
+                                st.session_state["img_run_counter"] += 1
+                                # 觸發彈窗
+                                dialog_bind_unknown_customer(st.session_state["ai_detected_group_name"], search_options, cust_mapping)
+                                st.stop() # 中斷後面渲染，強迫使用者先在彈窗做決定
+
+                        if found_match:
+                            st.success(f"🎉 圖片解構完成！已自動對齊熟客：【{st.session_state['final_c_name']}】")
                         
-                        st.session_state["unified_text_val"] = data_img.get("formatted_text", "")
                         st.session_state["img_run_counter"] += 1
-                        st.success("🎉 圖片解構完成！已成功帶入下方暫存區。")
                         time.sleep(0.5)
                         st.rerun()
                 except Exception as img_err:
-                    st.error(f"❌ 圖片視覺解析失敗: {str(img_err)}")
+                    st.error(f"❌ 圖片視覺解析失敗，原因：{str(img_err)}")
 
         st.markdown("---")
         
