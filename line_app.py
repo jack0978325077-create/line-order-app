@@ -45,7 +45,7 @@ except Exception as e:
 
 st.sidebar.markdown("## 🗂️ 系統功能導航後台")
 db_mode = st.sidebar.radio(
-    "請選擇操作功能：", 
+  "請選擇操作功能：",
     [
         "Line圖片文字叫貨",# 🎯 統一新功能名稱
         "🚚 配送排單行事曆",
