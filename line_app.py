@@ -687,76 +687,76 @@ def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
             use_container_width=True
         )
 
-# ====================
-# 2. 🚚 配送排單行事曆
-# ====================
-elif db_mode == "🚚 配送排單行事曆":
-    st.title("📆 雲端配送排單行事曆月看板")
+    # ====================
+    # 2. 🚚 配送排單行事曆
+    # ====================
+    elif db_mode == "🚚 配送排單行事曆":
+        st.title("📆 雲端配送排單行事曆月看板")
+        
+        @st.dialog("📋 雲端配送單據明細詳情", width="large")
+        def show_order_detail(c_name, c_date, target_status):
+            st.subheader(f"🏢 {c_name} — 明細")
+            if supabase:
+                try:
+                    detail_res = supabase.table("delivery_orders").select("product_name, quantity, status").eq("customer_name", c_name).eq("delivery_date", c_date).eq("status", target_status).execute()
+                    if detail_res.data: 
+                        st.dataframe(pd.DataFrame(detail_res.data), use_container_width=True, hide_index=True)
+                    else: 
+                        st.info("暫無明細項目")
+                except Exception as e: 
+                    st.error(f"明細撈取錯誤: {str(e)}")
     
-    @st.dialog("📋 雲端配送單據明細詳情", width="large")
-    def show_order_detail(c_name, c_date, target_status):
-        st.subheader(f"🏢 {c_name} — 明細")
+        today = datetime.today()
+        col_y, col_m = st.columns(2)
+        with col_y: select_year = st.selectbox("年份", list(range(today.year - 1, today.year + 3)), index=1)
+        with col_m: select_month = st.selectbox("月份", list(range(1, 13)), index=today.month - 1)
+        
+        start_date_str = f"{select_year}-{select_month:02d}-01"
+        _, last_day = calendar.monthrange(select_year, select_month)
+        end_date_str = f"{select_year}-{select_month:02d}-{last_day:02d}"
+        
+        orders_data = []
         if supabase:
             try:
-                detail_res = supabase.table("delivery_orders").select("product_name, quantity, status").eq("customer_name", c_name).eq("delivery_date", c_date).eq("status", target_status).execute()
-                if detail_res.data: 
-                    st.dataframe(pd.DataFrame(detail_res.data), use_container_width=True, hide_index=True)
-                else: 
-                    st.info("暫無明細項目")
-            except Exception as e: 
-                st.error(f"明細撈取錯誤: {str(e)}")
-
-    today = datetime.today()
-    col_y, col_m = st.columns(2)
-    with col_y: select_year = st.selectbox("年份", list(range(today.year - 1, today.year + 3)), index=1)
-    with col_m: select_month = st.selectbox("月份", list(range(1, 13)), index=today.month - 1)
+                db_res = supabase.table("delivery_orders").select("delivery_date, customer_name, status").gte("delivery_date", start_date_str).lte("delivery_date", end_date_str).execute()
+                orders_data = db_res.data if db_res.data else []
+            except Exception as calendar_err:
+                st.error(f"行事曆資料載入錯誤: {str(calendar_err)}")
     
-    start_date_str = f"{select_year}-{select_month:02d}-01"
-    _, last_day = calendar.monthrange(select_year, select_month)
-    end_date_str = f"{select_year}-{select_month:02d}-{last_day:02d}"
-    
-    orders_data = []
-    if supabase:
-        try:
-            db_res = supabase.table("delivery_orders").select("delivery_date, customer_name, status").gte("delivery_date", start_date_str).lte("delivery_date", end_date_str).execute()
-            orders_data = db_res.data if db_res.data else []
-        except Exception as calendar_err:
-            st.error(f"行事曆資料載入錯誤: {str(calendar_err)}")
-
-    cal = calendar.Calendar(firstweekday=6)
-    month_weeks = cal.monthdayscalendar(select_year, select_month)
-    week_days = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]
-    
-    header_cols = st.columns(7)
-    for idx, day_name in enumerate(week_days):
-        bg_color = "#CC0000" if idx == 0 or idx == 6 else "#1E1E1E"
-        header_cols[idx].markdown(f"<div style='text-align:center; font-weight:bold; background-color:{bg_color}; color:white; padding:8px; border-radius:5px 5px 0px 0px; font-size:14px;'>{day_name}</div>", unsafe_allow_html=True)
-    
-    for week in month_weeks:
-        day_cols = st.columns(7)
-        for idx, day in enumerate(week):
-            with day_cols[idx]:
-                if day != 0:
-                    current_date_str = f"{select_year}-{select_month:02d}-{day:02d}"
-                    day_orders = [o for o in orders_data if str(o.get("delivery_date")).replace("/", "-") == current_date_str or str(o.get("delivery_date")) == current_date_str]
-                    
-                    yellow_labels, green_labels = set(), set()
-                    for ord in day_orders:
-                        c_name, status = ord.get("customer_name", "未知客戶"), ord.get("status")
-                        if status == "已登記未出貨": yellow_labels.add(c_name)
-                        elif status in ["自由核銷已出貨", "已出貨"]: green_labels.add(c_name)
-                    
-                    with st.container(border=True):
-                        is_today = (today.year == select_year and today.month == select_month and today.day == day)
-                        day_style = "background-color:#FF4B4B; color:white; padding:2px 6px; border-radius:50%;" if is_today else "font-weight:bold; color:#E0E0E0;"
-                        st.markdown(f"<div style='text-align:right; margin-bottom:5px;'><span style='{day_style}'>{day}</span></div>", unsafe_allow_html=True)
+        cal = calendar.Calendar(firstweekday=6)
+        month_weeks = cal.monthdayscalendar(select_year, select_month)
+        week_days = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"]
+        
+        header_cols = st.columns(7)
+        for idx, day_name in enumerate(week_days):
+            bg_color = "#CC0000" if idx == 0 or idx == 6 else "#1E1E1E"
+            header_cols[idx].markdown(f"<div style='text-align:center; font-weight:bold; background-color:{bg_color}; color:white; padding:8px; border-radius:5px 5px 0px 0px; font-size:14px;'>{day_name}</div>", unsafe_allow_html=True)
+        
+        for week in month_weeks:
+            day_cols = st.columns(7)
+            for idx, day in enumerate(week):
+                with day_cols[idx]:
+                    if day != 0:
+                        current_date_str = f"{select_year}-{select_month:02d}-{day:02d}"
+                        day_orders = [o for o in orders_data if str(o.get("delivery_date")).replace("/", "-") == current_date_str or str(o.get("delivery_date")) == current_date_str]
                         
-                        for cust in sorted(yellow_labels):
-                            if st.button(f"🟡 {cust}", key=f"y_{current_date_str}_{cust}", use_container_width=True): show_order_detail(cust, current_date_str, "已登記未出貨")
-                        for cust in sorted(green_labels):
-                            if st.button(f"🟢 {cust}", key=f"g_{current_date_str}_{cust}", use_container_width=True): show_order_detail(cust, current_date_str, "已出貨")
-                else:
-                    with st.container(border=True): st.markdown("<div style='min-height:40px;'>&nbsp;</div>", unsafe_allow_html=True)
+                        yellow_labels, green_labels = set(), set()
+                        for ord in day_orders:
+                            c_name, status = ord.get("customer_name", "未知客戶"), ord.get("status")
+                            if status == "已登記未出貨": yellow_labels.add(c_name)
+                            elif status in ["自由核銷已出貨", "已出貨"]: green_labels.add(c_name)
+                        
+                        with st.container(border=True):
+                            is_today = (today.year == select_year and today.month == select_month and today.day == day)
+                            day_style = "background-color:#FF4B4B; color:white; padding:2px 6px; border-radius:50%;" if is_today else "font-weight:bold; color:#E0E0E0;"
+                            st.markdown(f"<div style='text-align:right; margin-bottom:5px;'><span style='{day_style}'>{day}</span></div>", unsafe_allow_html=True)
+                            
+                            for cust in sorted(yellow_labels):
+                                if st.button(f"🟡 {cust}", key=f"y_{current_date_str}_{cust}", use_container_width=True): show_order_detail(cust, current_date_str, "已登記未出貨")
+                            for cust in sorted(green_labels):
+                                if st.button(f"🟢 {cust}", key=f"g_{current_date_str}_{cust}", use_container_width=True): show_order_detail(cust, current_date_str, "已出貨")
+                    else:
+                        with st.container(border=True): st.markdown("<div style='min-height:40px;'>&nbsp;</div>", unsafe_allow_html=True)
 # ==================== 3. 📦 全品項商品主檔 ====================
 elif db_mode == "📦 全品項商品主檔":  # 👈 🎯 修正重點：補上「商品」兩個字，與選單完全對齊！
     st.header("📦 全品項商品雲端主檔 (🎯 鎖定 G 欄批價版)")
