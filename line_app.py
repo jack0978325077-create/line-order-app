@@ -40,7 +40,7 @@ SUPABASE_KEY = "sb_publishable_ROyxuswMSHsq0uymo9UVyw_K1qM3MYO"
 try:
   supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except Exception as e:
-    st.error(f"❌ 雲端資料庫連線初始化失敗: {str(e)}")
+  st.error(f"❌ 雲端資料庫連線初始化失敗: {str(e)}")
 # =========================================================
 
 st.sidebar.markdown("## 🗂️ 系統功能導航後台")
