@@ -8,7 +8,7 @@ from PIL import Image
 from datetime import datetime
 import calendar
 import time
-import threading  # 確保引入雙線道工具
+import threading
 import re
 from supabase import create_client, Client
 
@@ -207,8 +207,10 @@ if db_mode == "Line圖片文字叫貨":  
 
     st.markdown("---")
     input_mode = st.radio("請選擇對帳輸入模式：", ["📸 圖片截圖上傳模式", "✍️ 純文字複製貼上模式"], horizontal=True, index=1)
-    api_key = st.sidebar.text_input("Gemini API Key", value="AQ.Ab8RN6K7Kir0lqgMowA52Bo5tLY23cn7_lQ9dJhAvHPm913iSA", type="password")
-
+    # 💡 終極優化：如果 Streamlit 後台 Secrets 有設定 GEMINI_API_KEY，就優先用後台的，讓使用者不用手動打密碼！
+if st.secrets.get("GEMINI_API_KEY"):
+    api_key = st.secrets.get("GEMINI_API_KEY")
+    
     if input_mode == "📸 圖片截圖上傳模式":
         import io
         import re
@@ -251,16 +253,67 @@ if db_mode == "Line圖片文字叫貨":  
                         data_img = json.loads(clean_json, strict=False)
                         
                         # AI 嘗試認人與匹配綁定
-                        detected_group = clean_string(data_img.get("line_group_name", ""))
-                        if detected_group:
-                            st.session_state["ai_detected_group_name"] = detected_group
-                            for c in all_customers:
-                                c_kw = clean_string(c.get("search_keywords", ""))
-                                if detected_group in c_kw or c_kw in detected_group or clean_string(c.get("standard_name")) in detected_group:
-                                    st.session_state["final_c_name"] = c["standard_name"]
-                                    st.session_state["final_c_id"] = c["customer_id"]
-                                    if "ai_detected_group_name" in st.session_state: del st.session_state["ai_detected_group_name"]
-                                    break
+                        detected_group = clean_string(data_img.get("line_group_name", ""))
+                        matched_group_success = False
+                        
+                        if detected_group:
+                            st.session_state["ai_detected_group_name"] = detected_group
+                            for c in all_customers:
+                                c_kw = clean_string(c.get("search_keywords", ""))
+                                if detected_group in c_kw or c_kw in detected_group or clean_string(c.get("standard_name")) in detected_group:
+                                    st.session_state["final_c_name"] = c["standard_name"]
+                                    st.session_state["final_c_id"] = c["customer_id"]
+                                    if "ai_detected_group_name" in st.session_state: del st.session_state["ai_detected_group_name"]
+                                    matched_group_success = True
+                                    break
+                        
+                        # 🎯 方案 B 終極優化：如果 AI 抓到群組，但在雲端查無此人，立刻跳出互動視窗防呆！
+                        if detected_group and not matched_group_success:
+                            @st.dialog("⚠️ 未能識別有效的對帳客戶")
+                            def show_client_not_found_dialog(detected_grp):
+                                st.markdown(f"🤖 **AI 智慧分析偵測**：本次圖片/文字中抓到客戶特徵為：『**{detected_grp}**』，但資料庫中找不到對應。")
+                                st.write("請選擇現有客戶進行特徵綁定，或直接在此建立全新客戶：")
+                                
+                                tab1, tab2 = st.tabs(["🔗 綁定到現有客戶", "➕ 建立全新客戶"])
+                                
+                                with tab1:
+                                    # 這裡 search_options 是你前面建立好的下拉清單
+                                    learn_select = st.selectbox("🎯 請指定此特徵歸屬於哪位正式客戶：", options=search_options, key="dialog_learn_box")
+                                    if st.button("💾 確認綁定，並讓系統永遠記住", use_container_width=True):
+                                        if learn_select != "請選擇或輸入文字搜尋客戶... (留空代表查詢當日全廠)":
+                                            try:
+                                                target_cust = cust_mapping[learn_select]["raw_data"]
+                                                old_kw = target_cust.get("search_keywords", "")
+                                                new_kw = f"{old_kw}, {detected_grp}" if old_kw else detected_grp
+                                                supabase.table("customers").update({"search_keywords": new_kw}).eq("customer_id", target_cust["customer_id"]).execute()
+                                                st.session_state["final_c_name"] = target_cust["standard_name"]
+                                                st.session_state["final_c_id"] = target_cust["customer_id"]
+                                                if "ai_detected_group_name" in st.session_state: del st.session_state["ai_detected_group_name"]
+                                                st.success(f"🎉 學習成功！已將『{detected_grp}』永久綁定給【{target_cust['standard_name']}】！")
+                                                time.sleep(0.8)
+                                                st.rerun()
+                                            except Exception as le: st.error(f"寫入記憶失敗: {str(le)}")
+                                            
+                                with tab2:
+                                    new_c_id = st.text_input("新客戶編號 (必須唯一，例如: XV270099)：", key="dialog_new_c_id").strip()
+                                    new_c_name = st.text_input("新客戶標準官方全名 (例如: 快樂工坊)：", key="dialog_new_c_name").strip()
+                                    if st.button("🚀 確認建立新客戶並直接帶入對帳", use_container_width=True):
+                                        if new_c_id and new_c_name:
+                                            try:
+                                                combined_kw = f"SHORTCUT: , {detected_grp}"
+                                                supabase.table("customers").insert({"customer_id": new_c_id, "standard_name": new_c_name, "search_keywords": combined_kw}).execute()
+                                                st.session_state["final_c_name"] = new_c_name
+                                                st.session_state["final_c_id"] = new_c_id
+                                                if "ai_detected_group_name" in st.session_state: del st.session_state["ai_detected_group_name"]
+                                                st.success(f"🎉 成功新增客戶『{new_c_name}』並已自動帶入！")
+                                                time.sleep(0.8)
+                                                st.rerun()
+                                            except Exception as ex: st.error(f"❌ 新客戶建立失敗：{str(ex)}")
+                                        else:
+                                            st.error("❌ 編號與名稱皆為必填項目！")
+                                            
+                            # 執行彈窗
+                            show_client_not_found_dialog(detected_group)
                         
                         st.session_state["unified_text_val"] = data_img.get("formatted_text", "")
                         st.session_state["img_run_counter"] += 1
