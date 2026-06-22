@@ -549,11 +549,16 @@ if db_mode == "Line圖片文字叫貨":
     # --- ✍️ 純文字複製貼上模式 ---
     else:
         txt_col_a, txt_col_b = st.columns(2)
-        with txt_col_a: text_a = st.text_area("📋 客戶叫貨/加單 純文字", height=150, key="txt_area_a", disabled=not has_customer)
-        with txt_col_b: text_b = st.text_area("📋 未發貨/餘剩 純文字", height=150, key="txt_area_b", disabled=not has_customer)
+        with txt_col_a: text_a = st.text_area("📋 客戶叫貨/加單 純文字", height=150, key="txt_area_a")
+        with txt_col_b: text_b = st.text_area("📋 未發貨/餘剩 純文字", height=150, key="txt_area_b")
         
-        if (text_a or text_b) and api_key and has_customer:
+        if (text_a or text_b) and api_key:
             if st.button("⚡ 開始執行純文字智慧拆解分析", key="btn_txt_go", use_container_width=True):
+                
+                if not has_customer and "團" not in text_a and "@" not in text_a:
+                    st.warning("⚠️ **【請注意】** 系統抓到了品項文字，但您目前「尚未選定對帳客戶」！\n👉 請先滑動到網頁最上方，在下拉選單手動指定正式客戶。")
+                    st.stop()
+
                 try:
                     import requests
                     pure_text_a = clean_line_noise(text_a)
@@ -562,10 +567,14 @@ if db_mode == "Line圖片文字叫貨":
                     res_items_a = []
                     res_items_b = []
                     
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-                    headers = {"Content-Type": "application/json"}
+                    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": api_key
+                    }
                     
                     with st.spinner("⏳ 正在極速核銷分析中..."):
+                        # 1. 拆解 A 檔客戶叫貨
                         if pure_text_a:
                             PROMPT_WITH_GROUP = PROMPT_CLEAN_A + " Also detect line group name if any into form: {'line_group_name': '群組名', 'items': [...]}"
                             payload_a = {
@@ -573,23 +582,59 @@ if db_mode == "Line圖片文字叫貨":
                                 "generationConfig": {"responseMimeType": "application/json"}
                             }
                             response_a = requests.post(url, headers=headers, json=payload_a)
-                            raw_text_a = response_a.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+                            res_json_a = response_a.json()
                             
+                            # 🎯 安全防呆攔截：如果 Google 報錯或欄位遺失，直接秀出原因
+                            if "error" in res_json_a:
+                                st.error(f"❌ Google 伺服器拒絕請求: {res_json_a['error']['message']}")
+                                st.stop()
+                            
+                            candidates_a = res_json_a.get('candidates')
+                            if not candidates_a:
+                                st.error(f"❌ AI 回傳資料異常(無有效候選內容)，請檢查 API Key 狀態。原始回應：{res_json_a}")
+                                st.stop()
+                                
+                            raw_text_a = candidates_a[0]['content']['parts'][0]['text'].strip()
                             data_a = json.loads(re.sub(r"^```json\s*|```$", "", raw_text_a, flags=re.MULTILINE).strip(), strict=False)
                             res_items_a = data_a.get("items", [])
                             
                             detected_group = clean_string(data_a.get("line_group_name", ""))
-                            if detected_group:
-                                st.session_state["ai_detected_group_name"] = detected_group
+                            
+                            if detected_group and not has_customer:
+                                found_match = False
+                                for c in all_customers:
+                                    c_kw = clean_string(c.get("search_keywords", ""))
+                                    if detected_group in c_kw or c_kw in detected_group or clean_string(c.get("standard_name")) in detected_group:
+                                        st.session_state["final_c_name"] = c["standard_name"]
+                                        st.session_state["final_c_id"] = c["customer_id"]
+                                        st.session_state["ai_detected_group_name"] = ""
+                                        found_match = True
+                                        break
+                                
+                                if not found_match:
+                                    st.session_state["ai_detected_group_name"] = data_a.get("line_group_name", "").strip()
+                                    dialog_bind_unknown_customer(st.session_state["ai_detected_group_name"], search_options, cust_mapping)
+                                    st.stop()
                         
+                        # 2. 拆解 B 檔未發貨餘剩
                         if pure_text_b:
                             payload_b = {
                                 "contents": [{"parts": [{"text": pure_text_b}, {"text": PROMPT_CLEAN_B}]}],
                                 "generationConfig": {"responseMimeType": "application/json"}
                             }
                             response_b = requests.post(url, headers=headers, json=payload_b)
-                            raw_text_b = response_b.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+                            res_json_b = response_b.json()
                             
+                            if "error" in res_json_b:
+                                st.error(f"❌ Google API 錯誤: {res_json_b['error']['message']}")
+                                st.stop()
+                                
+                            candidates_b = res_json_b.get('candidates')
+                            if not candidates_b:
+                                st.error(f"❌ B檔 AI 回傳資料異常。原始回應：{res_json_b}")
+                                st.stop()
+                                
+                            raw_text_b = candidates_b[0]['content']['parts'][0]['text'].strip()
                             data_b = json.loads(re.sub(r"^```json\s*|```$", "", raw_text_b, flags=re.MULTILINE).strip(), strict=False)
                             res_items_b = data_b.get("items", [])
 
