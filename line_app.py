@@ -471,20 +471,22 @@ if db_mode == "Line圖片文字叫貨":
                                 p_name = x["product_name"]
                                 pool_dict[p_name] = pool_dict.get(p_name, 0) + int(x["quantity"])
     
-                            # 🎯 修正重點：網址移除 ?key=
-                            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-                            headers = {
-                                "Content-Type": "application/json",
-                                "x-goog-api-key": api_key  # 🔒 新版 AQ. 金鑰安全配置
-                            }
+                            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+                            headers = {"Content-Type": "application/json"}
                             payload = {
                                 "contents": [{"parts": [{"text": pure_text}, {"text": PROMPT_CLEAN_B}]}],
                                 "generationConfig": {"responseMimeType": "application/json"}
                             }
-                            # ... 下方其餘 requests.post 邏輯完美維持不變 ...
-    
+                            
                             response = requests.post(url, headers=headers, json=payload)
                             res_json = response.json()
+                            raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+                            
+                            clean_res_b = re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip()
+                            items_b = json.loads(clean_res_b, strict=False).get("items", [])
+                            
+                            # [以下原本的扣帳運算與刪除邏輯保持完全不動]
+                            b_cleaned_dict = {}
                             
                             if "error" in res_json:
                                 st.error(f"❌ Google API 錯誤: {res_json['error']['message']}")
@@ -553,9 +555,7 @@ if db_mode == "Line圖片文字叫貨":
         if (text_a or text_b) and api_key and has_customer:
             if st.button("⚡ 開始執行純文字智慧拆解分析", key="btn_txt_go", use_container_width=True):
                 try:
-                    # 🎯 修正重點：改用 Python 內建的 requests 請求，100% 根除找不到 module 的問題
                     import requests
-                    
                     pure_text_a = clean_line_noise(text_a)
                     pure_text_b = clean_line_noise(text_b)
                     
@@ -566,7 +566,6 @@ if db_mode == "Line圖片文字叫貨":
                     headers = {"Content-Type": "application/json"}
                     
                     with st.spinner("⏳ 正在極速核銷分析中..."):
-                        # 1. 拆解 A 檔客戶叫貨
                         if pure_text_a:
                             PROMPT_WITH_GROUP = PROMPT_CLEAN_A + " Also detect line group name if any into form: {'line_group_name': '群組名', 'items': [...]}"
                             payload_a = {
@@ -574,13 +573,8 @@ if db_mode == "Line圖片文字叫貨":
                                 "generationConfig": {"responseMimeType": "application/json"}
                             }
                             response_a = requests.post(url, headers=headers, json=payload_a)
-                            res_json_a = response_a.json()
+                            raw_text_a = response_a.json()['candidates'][0]['content']['parts'][0]['text'].strip()
                             
-                            if "error" in res_json_a:
-                                st.error(f"❌ Google API 錯誤: {res_json_a['error']['message']}")
-                                st.stop()
-                                
-                            raw_text_a = res_json_a['candidates'][0]['content']['parts'][0]['text'].strip()
                             data_a = json.loads(re.sub(r"^```json\s*|```$", "", raw_text_a, flags=re.MULTILINE).strip(), strict=False)
                             res_items_a = data_a.get("items", [])
                             
@@ -588,24 +582,17 @@ if db_mode == "Line圖片文字叫貨":
                             if detected_group:
                                 st.session_state["ai_detected_group_name"] = detected_group
                         
-                        # 2. 拆解 B 檔未發貨餘剩
                         if pure_text_b:
                             payload_b = {
                                 "contents": [{"parts": [{"text": pure_text_b}, {"text": PROMPT_CLEAN_B}]}],
                                 "generationConfig": {"responseMimeType": "application/json"}
                             }
                             response_b = requests.post(url, headers=headers, json=payload_b)
-                            res_json_b = response_b.json()
+                            raw_text_b = response_b.json()['candidates'][0]['content']['parts'][0]['text'].strip()
                             
-                            if "error" in res_json_b:
-                                st.error(f"❌ Google API 錯誤: {res_json_b['error']['message']}")
-                                st.stop()
-                                
-                            raw_text_b = res_json_b['candidates'][0]['content']['parts'][0]['text'].strip()
                             data_b = json.loads(re.sub(r"^```json\s*|```$", "", raw_text_b, flags=re.MULTILINE).strip(), strict=False)
                             res_items_b = data_b.get("items", [])
 
-                    # 寫入 Session 快取快遞，觸發中段的扣帳運算區
                     st.session_state["items_a_cached"] = res_items_a
                     st.session_state["items_b_cached"] = res_items_b
                     st.session_state["trigger_recalc"] = True
