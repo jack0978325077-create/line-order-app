@@ -150,12 +150,11 @@ def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
 if db_mode == "Line圖片文字叫貨":  
     st.title("LINE 熟客叫貨智慧扣帳自動導航系統 🚀")
     
-    # 🎯 終極優化：優先從雲端金庫自動讀取！找不到才叫使用者填（防呆最大化）
+    # 🎯 終極防呆淨化：優先從雲端金庫讀取，並自動拔除小編不小心複製到的引號與空白！
     if "gemini_api_key" in st.secrets and st.secrets["gemini_api_key"].strip() != "":
-        api_key = st.secrets["gemini_api_key"]
+        api_key = st.secrets["gemini_api_key"].strip().strip('"').strip("'")
     else:
-        # 如果雲端沒設定，才在左側顯示輸入框作為備援
-        api_key = st.sidebar.text_input("Gemini API Key", value="", type="password", placeholder="請貼入 AQ. 開頭的金鑰")
+        api_key = st.sidebar.text_input("Gemini API Key", value="", type="password", placeholder="請貼入 AQ. 開頭的金鑰").strip().strip('"').strip("'")
     
     final_date = st.session_state["selected_date_cache"]
     
@@ -370,8 +369,12 @@ if db_mode == "Line圖片文字叫貨":
                     pure_text_a = clean_line_noise(text_a)
                     pure_text_b = clean_line_noise(text_b)
                     # 🎯 核心修復：全面換裝最經典的網址 Key 傳參，一秒破除 candidates 消失詛咒
+                    # 🎯 雙重保險叩關法：網址帶 Key + 標頭帶 Key，徹底堵死 Google 的判定漏洞
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-                    headers = {"Content-Type": "application/json"}
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": api_key  # 🔒 同步塞入安全防禦頭
+                    }
                     
                     res_items_a, res_items_b = [], []
                     with st.spinner("⏳ 正在智慧核銷分析中..."):
