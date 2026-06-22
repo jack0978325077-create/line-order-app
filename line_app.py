@@ -318,25 +318,28 @@ if db_mode == "Line圖片文字叫貨":
         if uploaded_file and api_key:
             if st.button("⚡ 開始執行圖片 AI 智慧拆解並帶入暫存區", key="btn_img_go", use_container_width=True):
                 try:
-                    import requests
-                    import base64
-    
-                    # 🎯 將圖片轉為 Base64 格式送給 API
-                    base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
-                    
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-                    headers = {"Content-Type": "application/json"}
-                    
-                    payload = {
-                        "contents": [{
-                            "parts": [
-                                {"inlineData": {"mimeType": uploaded_file.type, "data": base64_image}},
-                                {"text": PROMPT_IMAGE_BRAIN}
-                            ]
-                        }],
-                        "generationConfig": {"responseMimeType": "application/json"}
-                    }
-    
+                import requests
+                import base64
+
+                base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
+                
+                # 🎯 修正重點：網址移除 ?key=，改由 header 安全安全傳送
+                url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": api_key  # 🔒 新版 AQ. 金鑰必須塞在這裡！
+                }
+                
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"inlineData": {"mimeType": uploaded_file.type, "data": base64_image}},
+                            {"text": PROMPT_IMAGE_BRAIN}
+                        ]
+                    }],
+                    "generationConfig": {"responseMimeType": "application/json"}
+                }
+                # ... 下方其餘 requests.post(url, headers=headers, json=payload) 邏輯完美維持不變 ...
                     with st.spinner("⏳ 正在利用最新視覺模型解構您的 LINE 截圖..."):
                         response = requests.post(url, headers=headers, json=payload)
                         res_json = response.json()
@@ -402,20 +405,19 @@ if db_mode == "Line圖片文字叫貨":
                     try:
                         import requests
                         
-                        # 🎯 繞過 SDK 判定 Bug：直接以原生 POST 帶入 AQ. 金鑰網址
-                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-                        headers = {"Content-Type": "application/json"}
+                        # 🎯 修正重點：網址移除 ?key=，金鑰挪至 headers
+                        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                        headers = {
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": api_key  # 🔒 新版 AQ. 金鑰專用安全封頭
+                        }
                         payload = {
-                            "contents": [{
-                                "parts": [
-                                    {"text": pure_text},
-                                    {"text": PROMPT_CLEAN_A}
-                                ]
-                            }],
+                            "contents": [{"parts": [{"text": pure_text}, {"text": PROMPT_CLEAN_A}]}],
                             "generationConfig": {"responseMimeType": "application/json"}
                         }
-    
+                        
                         with st.spinner("⏳ 正在將今日品項合併儲存至雲端..."):
+                            # ... 下方其餘 requests.post 邏輯完美維持不變 ...
                             response = requests.post(url, headers=headers, json=payload)
                             res_json = response.json()
                             
@@ -469,18 +471,17 @@ if db_mode == "Line圖片文字叫貨":
                                 p_name = x["product_name"]
                                 pool_dict[p_name] = pool_dict.get(p_name, 0) + int(x["quantity"])
     
-                            # 🎯 這裡同步切換為原生 HTTP POST 請求
-                            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-                            headers = {"Content-Type": "application/json"}
+                            # 🎯 修正重點：網址移除 ?key=
+                            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                            headers = {
+                                "Content-Type": "application/json",
+                                "x-goog-api-key": api_key  # 🔒 新版 AQ. 金鑰安全配置
+                            }
                             payload = {
-                                "contents": [{
-                                    "parts": [
-                                        {"text": pure_text},
-                                        {"text": PROMPT_CLEAN_B}
-                                    ]
-                                }],
+                                "contents": [{"parts": [{"text": pure_text}, {"text": PROMPT_CLEAN_B}]}],
                                 "generationConfig": {"responseMimeType": "application/json"}
                             }
+                            # ... 下方其餘 requests.post 邏輯完美維持不變 ...
     
                             response = requests.post(url, headers=headers, json=payload)
                             res_json = response.json()
