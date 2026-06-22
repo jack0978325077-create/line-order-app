@@ -318,24 +318,23 @@ if db_mode == "Line圖片文字叫貨":
         if uploaded_file and api_key:
             if st.button("⚡ 開始執行圖片 AI 智慧拆解並帶入暫存區", key="btn_img_go", use_container_width=True):
                 try:
-                    client = genai.Client(api_key=api_key)
-                    bytes_data = uploaded_file.getvalue()
-                    pil_image = Image.open(io.BytesIO(bytes_data))
-
+                    # 🎯 改用傳統穩定套件，徹底繞過新 SDK 的 AQ. 判斷 Bug
+                    import google.generativeai as old_genai
+                    old_genai.configure(api_key=api_key)
+                    
+                    # 建議使用 gemini-1.5-flash 或 gemini-2.0-flash 確保傳統套件完美支援
+                    model = old_genai.GenerativeModel('gemini-1.5-flash')
+    
                     with st.spinner("⏳ 正在利用最新視覺模型解構您的 LINE 截圖..."):
-                        res_img = client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=[pil_image, PROMPT_IMAGE_BRAIN]
-                        )
+                        # 傳統套件的傳參格式
+                        res_img = model.generate_content([pil_image, PROMPT_IMAGE_BRAIN])
                         
                         raw_text = res_img.text.strip()
-                        clean_json = re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip() # 🎯 修正一行不中斷
+                        clean_json = re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip()
                         data_img = json.loads(clean_json, strict=False)
                         
-                        # 先把品項文字抓下來儲存到暫存區
+                        # [以下後續的認人與暫存區寫入邏輯完全維持原樣不變]
                         st.session_state["unified_text_val"] = data_img.get("formatted_text", "")
-                        
-                        # AI 認人與匹配綁定
                         detected_group = clean_string(data_img.get("line_group_name", ""))
                         found_match = False
                         
@@ -496,7 +495,11 @@ if db_mode == "Line圖片文字叫貨":
         if (text_a or text_b) and api_key and has_customer:
             if st.button("⚡ 開始執行純文字智慧拆解分析", key="btn_txt_go", use_container_width=True):
                 try:
-                    client = genai.Client(api_key=api_key)
+                    # 🎯 同步切換為老版配置，確保純文字對帳也能順利通車
+                    import google.generativeai as old_genai
+                    old_genai.configure(api_key=api_key)
+                    model = old_genai.GenerativeModel('gemini-1.5-flash')
+
                     pure_text_a = clean_line_noise(text_a)
                     pure_text_b = clean_line_noise(text_b)
                     
@@ -506,7 +509,7 @@ if db_mode == "Line圖片文字叫貨":
                     with st.spinner("⏳ 正在極速核銷分析中..."):
                         if pure_text_a:
                             PROMPT_WITH_GROUP = PROMPT_CLEAN_A + " Also detect line group name if any into form: {'line_group_name': '群組名', 'items': [...]}"
-                            res_a = client.models.generate_content(model='gemini-2.5-flash', contents=[pure_text_a, PROMPT_WITH_GROUP])
+                            res_a = model.generate_content([pure_text_a, PROMPT_WITH_GROUP])
                             data_a = json.loads(re.sub(r"^```json\s*|```$", "", res_a.text.strip(), flags=re.MULTILINE).strip(), strict=False)
                             res_items_a = data_a.get("items", [])
                             
@@ -515,10 +518,11 @@ if db_mode == "Line圖片文字叫貨":
                                 st.session_state["ai_detected_group_name"] = detected_group
                         
                         if pure_text_b:
-                            res_b = client.models.generate_content(model='gemini-2.5-flash', contents=[pure_text_b, PROMPT_CLEAN_B])
+                            res_b = model.generate_content([pure_text_b, PROMPT_CLEAN_B])
                             data_b = json.loads(re.sub(r"^```json\s*|```$", "", res_b.text.strip(), flags=re.MULTILINE).strip(), strict=False)
                             res_items_b = data_b.get("items", [])
 
+                    # [以下後續的快取寫入與 st.rerun() 完全不變]
                     st.session_state["items_a_cached"] = res_items_a
                     st.session_state["items_b_cached"] = res_items_b
                     st.session_state["trigger_recalc"] = True
