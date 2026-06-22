@@ -150,12 +150,19 @@ def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
 if db_mode == "Line圖片文字叫貨":  
     st.title("LINE 熟客叫貨智慧扣帳自動導航系統 🚀")
     
-    # 🎯 終極防呆淨化：優先從雲端金庫讀取，並自動拔除小編不小心複製到的引號與空白！
+    # 🎯 終極在地大繞道：不跟 Windows 資料夾爭了！
+    # 優先讀取雲端金庫，如果沒有（代表在本地電腦跑），就直接讀取旁邊普通的「key.txt」
+    import os
+    
     if "gemini_api_key" in st.secrets and st.secrets["gemini_api_key"].strip() != "":
         api_key = st.secrets["gemini_api_key"].strip().strip('"').strip("'")
+    elif os.path.exists("key.txt"):
+        # ✅ 本地執行時，直接讀取普通的 key.txt 檔案，完全不需要點資料夾！
+        with open("key.txt", "r", encoding="utf-8") as f:
+            api_key = f.read().strip().strip('"').strip("'")
     else:
-        api_key = st.sidebar.text_input("Gemini API Key", value="", type="password", placeholder="請貼入 AQ. 開頭的金鑰").strip().strip('"').strip("'")
-    
+        # 備援：如果都沒有，才顯示輸入框
+        api_key = st.sidebar.text_input("Gemini API Key", value="", type="password", placeholder="請貼入 AQ. 開頭的金鑰")
     final_date = st.session_state["selected_date_cache"]
     
     PROMPT_CLEAN_A = (
