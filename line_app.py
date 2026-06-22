@@ -525,14 +525,13 @@ if db_mode == "Line圖片文字叫貨":
                             if rem_qty > 0:
                                 supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": rem_qty, "status": "已登記未出貨"}).execute()
                         
-                        # 🎯 換成這段正確的 Excel 製作代碼：
+                        # 🎯 換成這段最單純、不寫死引擎的 Excel 製作代碼：
                         if excel_rows:
                             output = io.BytesIO()
-                            df_xl = pd.DataFrame(excel_rows)  # ✅ 修正：直接宣告，不使用 with 包包裹
-                            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                                df_xl.to_excel(writer, index=False, sheet_name='本次核銷出貨明細')
+                            df_xl = pd.DataFrame(excel_rows)
+                            # ✅ 優化：直接轉出成 Excel，讓系統自動調用環境解碼器
+                            df_xl.to_excel(output, index=False, sheet_name='本次核銷出貨明細')
                             st.session_state[excel_ready_key] = output.getvalue()
-                        time.sleep(0.5)
                         st.rerun()
     else:
         st.info("💡 當前查詢條件下，雲端蓄水池內無待出貨登記項。")
