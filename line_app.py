@@ -318,28 +318,28 @@ if db_mode == "Line圖片文字叫貨":
         if uploaded_file and api_key:
             if st.button("⚡ 開始執行圖片 AI 智慧拆解並帶入暫存區", key="btn_img_go", use_container_width=True):
                 try:
-                import requests
-                import base64
-
-                base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
-                
-                # 🎯 修正重點：網址移除 ?key=，改由 header 安全安全傳送
-                url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-                headers = {
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": api_key  # 🔒 新版 AQ. 金鑰必須塞在這裡！
-                }
-                
-                payload = {
-                    "contents": [{
-                        "parts": [
-                            {"inlineData": {"mimeType": uploaded_file.type, "data": base64_image}},
-                            {"text": PROMPT_IMAGE_BRAIN}
-                        ]
-                    }],
-                    "generationConfig": {"responseMimeType": "application/json"}
-                }
-                # ... 下方其餘 requests.post(url, headers=headers, json=payload) 邏輯完美維持不變 ...
+                    import requests
+                    import base64
+    
+                    base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
+                    
+                    # 🎯 修正重點：網址移除 ?key=，改由 header 安全安全傳送
+                    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": api_key  # 🔒 新版 AQ. 金鑰必須塞在這裡！
+                    }
+                    
+                    payload = {
+                        "contents": [{
+                            "parts": [
+                                {"inlineData": {"mimeType": uploaded_file.type, "data": base64_image}},
+                                {"text": PROMPT_IMAGE_BRAIN}
+                            ]
+                        }],
+                        "generationConfig": {"responseMimeType": "application/json"}
+                    }
+                    # ... 下方其餘 requests.post(url, headers=headers, json=payload) 邏輯完美維持不變 ...
                     with st.spinner("⏳ 正在利用最新視覺模型解構您的 LINE 截圖..."):
                         response = requests.post(url, headers=headers, json=payload)
                         res_json = response.json()
