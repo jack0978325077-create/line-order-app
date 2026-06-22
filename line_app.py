@@ -436,7 +436,11 @@ if db_mode == "Line圖片文字叫貨":
             if not enable_all_dates: qb = qb.eq("delivery_date", final_date)
             pool_list = qb.execute().data or []
 
-        pool_dict = {x["product_name"]: pool_dict.get(x["product_name"], 0) + int(x["quantity"]) for x in pool_list}
+        # 🎯 換成這段正確的程式碼：
+        pool_dict = {}
+        for x in pool_list:
+            p_name = x["product_name"]
+            pool_dict[p_name] = pool_dict.get(p_name, 0) + int(x["quantity"])
         b_dict = {advanced_clean_product_name(b.get("raw_item_name")): int(pd.to_numeric(b.get("quantity", 0), errors='coerce') or 0) for b in items_b if b.get("raw_item_name")}
 
         table_rows = []
