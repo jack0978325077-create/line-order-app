@@ -384,12 +384,16 @@ if db_mode == "Line圖片文字叫貨":
                 try:
                     pure_text_a = clean_line_noise(text_a)
                     pure_text_b = clean_line_noise(text_b)
-                    # 🎯 2026 最新 AQ. 金鑰正統通車規格：網址必須 100% 乾淨，絕對不能出現 ?key=
+                    # 🎯 終極安全防呆：如果金鑰因為換行被解析成空的，直接攔截不發送，防止噴出混淆錯誤
+                    if not api_key or len(api_key) < 10:
+                        st.error("❌ 系統偵測到 Gemini API 金鑰為空或格式不完整！請檢查 Streamlit 後台 Secrets 設定，確保金鑰與等號在【同一行】且無多餘斷行。")
+                        st.stop()
+
+                    # 🔓 密碼正確加載後的標準 2026 安全叩關連結
                     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-                    
                     headers = {
                         "Content-Type": "application/json",
-                        "x-goog-api-key": api_key  # 🔒 新版 AQ. 金鑰唯一指定安全傳送通道
+                        "x-goog-api-key": api_key  # 🔒 金鑰安全鎖定在標頭中發送
                     }
                     
                     res_items_a, res_items_b = [], []
