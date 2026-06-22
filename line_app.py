@@ -448,28 +448,44 @@ if db_mode == "Line圖片文字叫貨":
             c_pool = advanced_clean_product_name(prod_name)
             matched_b = 0
             for bk, bv in b_dict.items():
-                if bk in c_pool or c_pool in bk: matched_b = bv; break
+                if bk in c_pool or c_pool in bk: 
+                    matched_b = bv
+                    break
             
-            actual_ship = max(0, total_qty - matched_b) if (st.session_state["is_ai_mode"] or len(items_b) > 0) else 0
-            note = "蓄水池待出貨"
-            if st.session_state["is_ai_mode"] or len(items_b) > 0:
-                note = "B檔留空➔全出" if matched_b == 0 else f"部分到貨(出{actual_ship}/欠{matched_b})"
+            # 🎯 修正 1：只要 B 檔沒有特別記錄扣帳，實際出貨預設一律先給 0（留給一鍵滿額或手動改）
+            if (st.session_state["is_ai_mode"] or len(b_dict) > 0) and matched_b > 0:
+                actual_ship = max(0, total_qty - matched_b)
+                note = f"⚠️ 部分到貨(出{actual_ship}/欠{matched_b})"
+            elif (st.session_state["is_ai_mode"] or len(b_dict) > 0) and matched_b == 0:
+                actual_ship = 0
+                note = "🔍 預設暫不出貨 (可點一鍵滿額)"
+            else:
+                actual_ship = 0
+                note = "蓄水池待出貨"
 
             u_price, p_id = 0.0, "新編號"
             for p in master_products:
-                if p.get("product_name") == prod_name: u_price = float(p.get("price", 0.0)); p_id = p.get("product_id"); break
+                if p.get("product_name") == prod_name: 
+                    u_price = float(p.get("price", 0.0))
+                    p_id = p.get("product_id")
+                    break
 
-            table_rows.append({"商品編號": p_id, "商品名稱": prod_name, "雲端累積總量": total_qty, "B檔未發剩餘": matched_b, "實際出貨數量": actual_ship, "單價": u_price, "總金額": actual_ship * u_price, "核銷動作": note})
+            table_rows.append({
+                "商品編號": p_id, "商品名稱": prod_name, "雲端累積總量": total_qty, 
+                "B檔未發剩餘": matched_b, "實際出貨數量": actual_ship, "單價": u_price, 
+                "總金額": actual_ship * u_price, "核銷動作": note
+            })
         
         st.session_state[state_key] = pd.DataFrame(table_rows)
         st.session_state["items_a_cached"], st.session_state["items_b_cached"] = [], []
         st.session_state["trigger_recalc"], st.session_state["is_ai_mode"] = False, False
         st.rerun()
 
+    # ==================== 📊 獨立偵測滾動核銷面板渲染區 ====================
     st.subheader("📊 獨立偵測滾動核銷面板")
     if state_key in st.session_state and not st.session_state[state_key].empty:
         df_current = st.session_state[state_key]
-        cols = ["商品編號", "商品名稱", "雲端累積總量", "核銷動作"] if not has_customer else ["商品編號", "商品名稱", "雲端累積總量", "B檔未發剩餘", "實際出貨數量", "單價", "總金額", "核銷動作"]
+        cols = ["商品編號", "商品名稱", "雲端累積總量", "B檔未發剩餘", "實際出貨數量", "單價", "總金額", "核銷動作"]
         st.dataframe(df_current, use_container_width=True, column_order=cols, hide_index=True)
 
         if has_customer and not enable_all_dates:
@@ -480,18 +496,59 @@ if db_mode == "Line圖片文字叫貨":
                         st.session_state[state_key].at[idx, "實際出貨數量"] = row["雲端累積總量"]
                         st.session_state[state_key].at[idx, "B檔未發剩餘"] = 0
                         st.session_state[state_key].at[idx, "總金額"] = row["雲端累積總量"] * row["單價"]
+                        st.session_state[state_key].at[idx, "核銷動作"] = "一鍵填滿➔確認全出"
                     st.rerun()
             with c_btn2:
                 if st.button("🔒 確認結帳並輸出 Excel", use_container_width=True):
-                    for _, r in st.session_state[state_key].iterrows():
-                        supabase.table("delivery_orders").delete().eq("customer_name", st.session_state["final_c_name"]).eq("product_name", r["商品名稱"]).eq("status", "已登記未出貨").execute()
-                        if int(r["實際出貨數量"]) > 0:
-                            supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": r["商品名稱"], "quantity": int(r["實際出貨數量"]), "status": "已出貨"}).execute()
-                        if int(r["B檔未發剩餘"]) > 0:
-                            supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": r["商品名稱"], "quantity": int(r["B檔未發剩餘"]), "status": "已登記未出貨"}).execute()
-                    st.success("🎉 結帳成功！已安全更新雲端帳目。")
-                    time.sleep(0.5)
-                    st.rerun()
+                    with st.spinner("⏳ 正在定格帳目並產出 Excel 報表..."):
+                        excel_rows = []
+                        df_final = st.session_state[state_key]
+                        
+                        # 🎯 修正 2：在刪除雲端暫存前，先將當前對帳結果打包進 Excel 資料列
+                        for _, r in df_final.iterrows():
+                            act_qty = int(r["實際出貨數量"])
+                            rem_qty = int(r["B檔未發剩餘"])
+                            p_name = r["商品名稱"]
+                            
+                            if act_qty > 0:
+                                excel_rows.append({
+                                    "單據類型": "出貨", "訂單編號": "LINE智慧核銷", "客戶編號": str(st.session_state["final_c_id"]),
+                                    "客戶名稱": str(st.session_state["final_c_name"]), "日期": str(final_date),
+                                    "商品編號": str(r["商品編號"]), "商品名稱": str(p_name),
+                                    "數量": act_qty, "單價": float(r["單價"]), "總金額": float(r["總金額"])
+                                })
+                            
+                            # 更新雲端資料庫狀態
+                            supabase.table("delivery_orders").delete().eq("customer_name", st.session_state["final_c_name"]).eq("product_name", p_name).eq("status", "已登記未出貨").execute()
+                            if act_qty > 0:
+                                supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": act_qty, "status": "已出貨"}).execute()
+                            if rem_qty > 0:
+                                supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": rem_qty, "status": "已登記未出貨"}).execute()
+                        
+                        # 製作 Excel 實體二進位檔案
+                        if excel_rows:
+                            output = io.BytesIO()
+                            with pd.DataFrame(excel_rows) as df_xl:
+                                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                                    df_xl.to_excel(writer, index=False, sheet_name='本次核銷出貨明細')
+                            st.session_state[excel_ready_key] = output.getvalue()
+                        
+                        st.success("🎉 結帳成功！出貨軌跡已定格。")
+                        time.sleep(0.5)
+                        st.rerun()
+    else:
+        st.info("💡 當前查詢條件下，雲端蓄水池內無待出貨登記項。")
+
+    # 🎯 修正 3：將下載按鈕移到最外層。這樣即使結帳後清空了表格，下載按鈕依然會穩穩留在畫面上供下載！
+    if excel_ready_key in st.session_state and st.session_state[excel_ready_key] is not None:
+        st.markdown("---")
+        st.download_button(
+            label=f"📥 下載【{st.session_state['final_c_name']}】出貨對帳 Excel 報表", 
+            data=st.session_state[excel_ready_key], 
+            file_name=f"對帳單_{final_date.replace('/', '')}_{st.session_state['final_c_name']}.xlsx", 
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
 # =========================================================
 # 其餘後台模組維持與原版一致 (略，維持原 Supabase 無快取綁定邏輯)
