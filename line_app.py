@@ -150,8 +150,12 @@ def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
 if db_mode == "Line圖片文字叫貨":  
     st.title("LINE 熟客叫貨智慧扣帳自動導航系統 🚀")
     
-    # 左側金鑰欄位加回，支援最新 AQ. 格式明碼網址叩關
-    api_key = st.sidebar.text_input("Gemini API Key", value="", type="password", placeholder="請貼入 AQ. 開頭的金鑰")
+    # 🎯 終極優化：優先從雲端金庫自動讀取！找不到才叫使用者填（防呆最大化）
+    if "gemini_api_key" in st.secrets and st.secrets["gemini_api_key"].strip() != "":
+        api_key = st.secrets["gemini_api_key"]
+    else:
+        # 如果雲端沒設定，才在左側顯示輸入框作為備援
+        api_key = st.sidebar.text_input("Gemini API Key", value="", type="password", placeholder="請貼入 AQ. 開頭的金鑰")
     
     final_date = st.session_state["selected_date_cache"]
     
