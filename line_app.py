@@ -233,10 +233,12 @@ if db_mode == "Line圖片文字叫貨":
                     base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
                     # 🎯 經典 URL 傳參法，強迫雲端伺服器老實放行 AQ. 金鑰
                     # 📸 圖片解析區塊同步比照辦理
+                    # 🎯 2026 最新 AQ. 金鑰唯一指定通車格式：網址必須 100% 乾淨！
                     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                    
                     headers = {
                         "Content-Type": "application/json",
-                        "x-goog-api-key": api_key
+                        "x-goog-api-key": api_key  # 🔒 讓新版金鑰只走這條安全專用通道
                     }
                     payload = {
                         "contents": [{"parts": [
@@ -283,8 +285,13 @@ if db_mode == "Line圖片文字叫貨":
             with btn_col1:
                 if st.button("📦 這些品項均『登記需出貨品項』(存入雲端)", use_container_width=True):
                     try:
-                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-                        headers = {"Content-Type": "application/json"}
+                        # 🎯 2026 最新 AQ. 金鑰唯一指定通車格式：網址必須 100% 乾淨！
+                        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                        
+                        headers = {
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": api_key  # 🔒 讓新版金鑰只走這條安全專用通道
+                        }
                         payload = {"contents": [{"parts": [{"text": pure_text}, {"text": PROMPT_CLEAN_A}]}], "generationConfig": {"responseMimeType": "application/json"}}
                         
                         res_json = requests.post(url, headers=headers, json=payload).json()
@@ -321,8 +328,13 @@ if db_mode == "Line圖片文字叫貨":
                             p_name = x["product_name"]
                             pool_dict[p_name] = pool_dict.get(p_name, 0) + int(x["quantity"])
                         
-                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-                        headers = {"Content-Type": "application/json"}
+                        # 🎯 2026 最新 AQ. 金鑰唯一指定通車格式：網址必須 100% 乾淨！
+                        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                        
+                        headers = {
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": api_key  # 🔒 讓新版金鑰只走這條安全專用通道
+                        }
                         payload = {"contents": [{"parts": [{"text": pure_text}, {"text": PROMPT_CLEAN_B}]}], "generationConfig": {"responseMimeType": "application/json"}}
                         
                         res_json = requests.post(url, headers=headers, json=payload).json()
