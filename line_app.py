@@ -232,8 +232,12 @@ if db_mode == "Line圖片文字叫貨":
                     import base64
                     base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
                     # 🎯 經典 URL 傳參法，強迫雲端伺服器老實放行 AQ. 金鑰
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-                    headers = {"Content-Type": "application/json"}
+                    # 📸 圖片解析區塊同步比照辦理
+                    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": api_key
+                    }
                     payload = {
                         "contents": [{"parts": [
                             {"inlineData": {"mimeType": uploaded_file.type, "data": base64_image}},
@@ -368,12 +372,12 @@ if db_mode == "Line圖片文字叫貨":
                 try:
                     pure_text_a = clean_line_noise(text_a)
                     pure_text_b = clean_line_noise(text_b)
-                    # 🎯 核心修復：全面換裝最經典的網址 Key 傳參，一秒破除 candidates 消失詛咒
-                    # 🎯 雙重保險叩關法：網址帶 Key + 標頭帶 Key，徹底堵死 Google 的判定漏洞
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+                    # 🎯 2026 最新 AQ. 金鑰正統通車規格：網址必須 100% 乾淨，絕對不能出現 ?key=
+                    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                    
                     headers = {
                         "Content-Type": "application/json",
-                        "x-goog-api-key": api_key  # 🔒 同步塞入安全防禦頭
+                        "x-goog-api-key": api_key  # 🔒 新版 AQ. 金鑰唯一指定安全傳送通道
                     }
                     
                     res_items_a, res_items_b = [], []
