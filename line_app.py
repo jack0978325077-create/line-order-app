@@ -525,15 +525,13 @@ if db_mode == "Line圖片文字叫貨":
                             if rem_qty > 0:
                                 supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": rem_qty, "status": "已登記未出貨"}).execute()
                         
-                        # 製作 Excel 實體二進位檔案
+                        # 🎯 換成這段正確的 Excel 製作代碼：
                         if excel_rows:
                             output = io.BytesIO()
-                            with pd.DataFrame(excel_rows) as df_xl:
-                                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                                    df_xl.to_excel(writer, index=False, sheet_name='本次核銷出貨明細')
+                            df_xl = pd.DataFrame(excel_rows)  # ✅ 修正：直接宣告，不使用 with 包包裹
+                            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                                df_xl.to_excel(writer, index=False, sheet_name='本次核銷出貨明細')
                             st.session_state[excel_ready_key] = output.getvalue()
-                        
-                        st.success("🎉 結帳成功！出貨軌跡已定格。")
                         time.sleep(0.5)
                         st.rerun()
     else:
