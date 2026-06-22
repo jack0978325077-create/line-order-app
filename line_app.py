@@ -51,31 +51,6 @@ if "supabase_client" not in st.session_state:
 supabase = st.session_state.supabase_client
 
 # =========================================================
-# 🔐 智慧權杖管理中心：動態換取 Google 認證 Token
-# =========================================================
-def get_gemini_oauth_token():
-    """從 Secrets 中安全加載 JSON 憑證，並向 Google 自動換取正式臨時 Access Token"""
-    try:
-        from google.oauth2 import service_account
-        from google.auth.transport.requests import Request
-        
-        if "gcp_service_account" not in st.secrets:
-            st.error("❌ 雲端金庫中找不到 'gcp_service_account' 設定，請先至 Streamlit 部署後台設定 Secrets。")
-            return None
-            
-        gcp_info = json.loads(st.secrets["gcp_service_account"])
-        creds = service_account.Credentials.from_service_account_info(
-            gcp_info, 
-            scopes=["https://www.googleapis.com/auth/generative-language"]
-        )
-        auth_request = Request()
-        creds.refresh(auth_request)
-        return creds.token
-    except Exception as e:
-        st.error(f"🔑 憑證換取失敗！請確認 Secrets 中的 JSON 貼上格式是否正確。原因：{str(e)}")
-        return None
-
-# =========================================================
 # 🔄 全域 Session State 初始化
 # =========================================================
 INIT_KEYS = {
@@ -174,6 +149,10 @@ def dialog_bind_unknown_customer(detected_group, search_options, cust_mapping):
 # =========================================================
 if db_mode == "Line圖片文字叫貨":  
     st.title("LINE 熟客叫貨智慧扣帳自動導航系統 🚀")
+    
+    # 左側金鑰欄位加回，支援最新 AQ. 格式明碼網址叩關
+    api_key = st.sidebar.text_input("Gemini API Key", value="", type="password", placeholder="請貼入 AQ. 開頭的金鑰")
+    
     final_date = st.session_state["selected_date_cache"]
     
     PROMPT_CLEAN_A = (
@@ -244,128 +223,134 @@ if db_mode == "Line圖片文字叫貨":
         PROMPT_IMAGE_BRAIN = "Analyze this LINE screenshot. Extract Group Title to 'line_group_name' and all order items on newlines to 'formatted_text'. Return JSON only."
         uploaded_file = st.file_uploader("📤 請上傳 LINE 視窗截圖", type=["png", "jpg", "jpeg"])
         
-        if uploaded_file:
+        if uploaded_file and api_key:
             if st.button("⚡ 開始執行圖片 AI 智慧拆解並帶入暫存區", use_container_width=True):
-                access_token = get_gemini_oauth_token()
-                if access_token:
-                    try:
-                        import base64
-                        base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
-                        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-                        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
-                        payload = {
-                            "contents": [{"parts": [
-                                {"inlineData": {"mimeType": uploaded_file.type, "data": base64_image}},
-                                {"text": PROMPT_IMAGE_BRAIN}
-                            ]}],
-                            "generationConfig": {"responseMimeType": "application/json"}
-                        }
+                try:
+                    import base64
+                    base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
+                    # 🎯 經典 URL 傳參法，強迫雲端伺服器老實放行 AQ. 金鑰
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+                    headers = {"Content-Type": "application/json"}
+                    payload = {
+                        "contents": [{"parts": [
+                            {"inlineData": {"mimeType": uploaded_file.type, "data": base64_image}},
+                            {"text": PROMPT_IMAGE_BRAIN}
+                        ]}],
+                        "generationConfig": {"responseMimeType": "application/json"}
+                    }
+                    
+                    with st.spinner("⏳ 正在解構您的 LINE 截圖..."):
+                        res_json = requests.post(url, headers=headers, json=payload).json()
+                        if "error" in res_json:
+                            st.error(f"❌ Google API 錯誤: {res_json['error']['message']}"); st.stop()
+                        if "candidates" not in res_json:
+                            st.error(f"❌ AI 回傳異常，請確認金鑰權限。完整回應：{res_json}"); st.stop()
+                            
+                        raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+                        data_img = json.loads(re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip(), strict=False)
                         
-                        with st.spinner("⏳ 正在利用安全憑證解構您的 LINE 截圖..."):
-                            res_json = requests.post(url, headers=headers, json=payload).json()
-                            raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
-                            data_img = json.loads(re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip(), strict=False)
-                            
-                            st.session_state["unified_text_val"] = data_img.get("formatted_text", "")
-                            detected_group = clean_string(data_img.get("line_group_name", ""))
-                            found_match = False
-                            
-                            if detected_group:
-                                for c in all_customers:
-                                    if detected_group in clean_string(c.get("search_keywords", "")) or clean_string(c.get("standard_name")) in detected_group:
-                                        st.session_state["final_c_name"] = c["standard_name"]
-                                        st.session_state["final_c_id"] = c["customer_id"]
-                                        found_match = True
-                                        break
-                                if not found_match:
-                                    st.session_state["ai_detected_group_name"] = data_img.get("line_group_name", "").strip()
-                                    dialog_bind_unknown_customer(st.session_state["ai_detected_group_name"], search_options, cust_mapping)
-                                    st.stop()
-                            st.rerun()
-                    except Exception as e: st.error(f"❌ 圖片解析失敗: {str(e)}")
+                        st.session_state["unified_text_val"] = data_img.get("formatted_text", "")
+                        detected_group = clean_string(data_img.get("line_group_name", ""))
+                        found_match = False
+                        
+                        if detected_group:
+                            for c in all_customers:
+                                if detected_group in clean_string(c.get("search_keywords", "")) or clean_string(c.get("standard_name")) in detected_group:
+                                    st.session_state["final_c_name"] = c["standard_name"]
+                                    st.session_state["final_c_id"] = c["customer_id"]
+                                    found_match = True
+                                    break
+                            if not found_match:
+                                st.session_state["ai_detected_group_name"] = data_img.get("line_group_name", "").strip()
+                                dialog_bind_unknown_customer(st.session_state["ai_detected_group_name"], search_options, cust_mapping)
+                                st.stop()
+                        st.rerun()
+                except Exception as e: st.error(f"❌ 圖片解析失敗: {str(e)}")
 
         unified_text = st.text_area("📋 圖片/文字叫貨拆解暫存區", value=st.session_state["unified_text_val"], height=200)
 
-        if unified_text.strip() and has_customer:
+        if unified_text.strip() and has_customer and api_key:
             pure_text = clean_line_noise(unified_text)
             btn_col1, btn_col2 = st.columns(2)
             
             with btn_col1:
                 if st.button("📦 這些品項均『登記需出貨品項』(存入雲端)", use_container_width=True):
-                    access_token = get_gemini_oauth_token()
-                    if access_token:
-                        try:
-                            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-                            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
-                            payload = {"contents": [{"parts": [{"text": pure_text}, {"text": PROMPT_CLEAN_A}]}], "generationConfig": {"responseMimeType": "application/json"}}
-                            
-                            res_json = requests.post(url, headers=headers, json=payload).json()
-                            raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
-                            items_a = json.loads(re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip(), strict=False).get("items", [])
-                            
-                            master_products = supabase.table("product_master").select("*").execute().data or []
-                            for item_a in items_a:
-                                r_name = str(item_a.get("raw_item_name", "")).strip()
-                                u_clean = advanced_clean_product_name(r_name)
-                                qty = int(pd.to_numeric(item_a.get("quantity", 1), errors='coerce') or 1)
-                                std_name = r_name
-                                for p in master_products:
-                                    if advanced_clean_product_name(p.get("product_name")) in u_clean or u_clean in advanced_clean_product_name(p.get("product_name")):
-                                        std_name = p.get("product_name")
-                                        break
-                                check_exist = supabase.table("delivery_orders").select("*").eq("customer_name", st.session_state["final_c_name"]).eq("product_name", std_name).eq("status", "已登記未出貨").eq("delivery_date", final_date).execute()
-                                if check_exist.data:
-                                    supabase.table("delivery_orders").update({"quantity": int(check_exist.data[0]["quantity"]) + qty}).eq("id", check_exist.data[0]["id"]).execute()
-                                else:
-                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": std_name, "quantity": qty, "status": "已登記未出貨"}).execute()
-                            st.session_state["unified_text_val"] = ""
-                            st.session_state["trigger_recalc"] = True
-                            st.rerun()
-                        except Exception as e: st.error(f"❌ 登記失敗: {str(e)}")
+                    try:
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+                        headers = {"Content-Type": "application/json"}
+                        payload = {"contents": [{"parts": [{"text": pure_text}, {"text": PROMPT_CLEAN_A}]}], "generationConfig": {"responseMimeType": "application/json"}}
+                        
+                        res_json = requests.post(url, headers=headers, json=payload).json()
+                        if "error" in res_json: st.error(res_json["error"]["message"]); st.stop()
+                        raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+                        items_a = json.loads(re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip(), strict=False).get("items", [])
+                        
+                        master_products = supabase.table("product_master").select("*").execute().data or []
+                        for item_a in items_a:
+                            r_name = str(item_a.get("raw_item_name", "")).strip()
+                            u_clean = advanced_clean_product_name(r_name)
+                            qty = int(pd.to_numeric(item_a.get("quantity", 1), errors='coerce') or 1)
+                            std_name = r_name
+                            for p in master_products:
+                                if advanced_clean_product_name(p.get("product_name")) in u_clean or u_clean in advanced_clean_product_name(p.get("product_name")):
+                                    std_name = p.get("product_name")
+                                    break
+                            check_exist = supabase.table("delivery_orders").select("*").eq("customer_name", st.session_state["final_c_name"]).eq("product_name", std_name).eq("status", "已登記未出貨").eq("delivery_date", final_date).execute()
+                            if check_exist.data:
+                                supabase.table("delivery_orders").update({"quantity": int(check_exist.data[0]["quantity"]) + qty}).eq("id", check_exist.data[0]["id"]).execute()
+                            else:
+                                supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": std_name, "quantity": qty, "status": "已登記未出貨"}).execute()
+                        st.session_state["unified_text_val"] = ""
+                        st.session_state["trigger_recalc"] = True
+                        st.rerun()
+                    except Exception as e: st.error(f"❌ 登記失敗: {str(e)}")
 
             with btn_col2:
                 if st.button("❌ 這些品項『目前無出貨』，其餘品項均出貨", use_container_width=True):
-                    access_token = get_gemini_oauth_token()
-                    if access_token:
-                        try:
-                            pool_list = supabase.table("delivery_orders").select("*").eq("customer_name", st.session_state["final_c_name"]).eq("status", "已登記未出貨").execute().data or []
-                            pool_dict = {x["product_name"]: pool_dict.get(x["product_name"], 0) + int(x["quantity"]) for x in pool_list}
-                            
-                            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-                            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
-                            payload = {"contents": [{"parts": [{"text": pure_text}, {"text": PROMPT_CLEAN_B}]}], "generationConfig": {"responseMimeType": "application/json"}}
-                            
-                            res_json = requests.post(url, headers=headers, json=payload).json()
-                            raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
-                            items_b = json.loads(re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip(), strict=False).get("items", [])
-                            
-                            b_dict = {advanced_clean_product_name(b.get("raw_item_name")): int(pd.to_numeric(b.get("quantity", 0), errors='coerce') or 0) for b in items_b if b.get("raw_item_name")}
-                            
-                            for k in pool_dict.keys():
-                                supabase.table("delivery_orders").delete().eq("customer_name", st.session_state["final_c_name"]).eq("product_name", k).eq("status", "已登記未出貨").execute()
-                            
-                            p_dict = {p["product_name"]: p for p in (supabase.table("product_master").select("product_id", "product_name", "price").execute().data or [])}
-                            excel_rows = []
-                            for prod_name, total_qty in pool_dict.items():
-                                c_pool = advanced_clean_product_name(prod_name)
-                                matched_b = 0
-                                for bk, bv in b_dict.items():
-                                    if bk in c_pool or c_pool in bk: matched_b = bv; break
-                                actual_ship = max(0, total_qty - matched_b)
-                                if actual_ship > 0:
-                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": prod_name, "quantity": actual_ship, "status": "已出貨"}).execute()
-                                    pr = p_dict.get(prod_name, {})
-                                    excel_rows.append({"單據類型": "出貨", "日期": str(final_date), "客戶名稱": str(st.session_state["final_c_name"]), "商品名稱": str(prod_name), "數量": actual_ship, "單價": float(pr.get("price", 0)), "總金額": float(pr.get("price", 0)) * actual_ship})
-                                if matched_b > 0:
-                                    supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": prod_name, "quantity": matched_b, "status": "已登記未出貨"}).execute()
-                            if excel_rows:
-                                output = io.BytesIO()
-                                with pd.ExcelWriter(output, engine='xlsxwriter') as writer: pd.DataFrame(excel_rows).to_excel(writer, index=False)
-                                st.session_state[excel_ready_key] = output.getvalue()
-                            st.session_state["unified_text_val"] = ""
-                            st.session_state["trigger_recalc"] = True
-                            st.rerun()
-                        except Exception as e: st.error(f"❌ 核銷失敗: {str(e)}")
+                    try:
+                        pool_list = supabase.table("delivery_orders").select("*").eq("customer_name", st.session_state["final_c_name"]).eq("status", "已登記未出貨").execute().data or []
+                        pool_dict = {}
+                        for x in pool_list:
+                            p_name = x["product_name"]
+                            pool_dict[p_name] = pool_dict.get(p_name, 0) + int(x["quantity"])
+                        
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+                        headers = {"Content-Type": "application/json"}
+                        payload = {"contents": [{"parts": [{"text": pure_text}, {"text": PROMPT_CLEAN_B}]}], "generationConfig": {"responseMimeType": "application/json"}}
+                        
+                        res_json = requests.post(url, headers=headers, json=payload).json()
+                        if "error" in res_json: st.error(res_json["error"]["message"]); st.stop()
+                        raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+                        items_b = json.loads(re.sub(r"^```json\s*|```$", "", raw_text, flags=re.MULTILINE).strip(), strict=False).get("items", [])
+                        
+                        b_dict = {advanced_clean_product_name(b.get("raw_item_name")): int(pd.to_numeric(b.get("quantity", 0), errors='coerce') or 0) for b in items_b if b.get("raw_item_name")}
+                        
+                        for k in pool_dict.keys():
+                            supabase.table("delivery_orders").delete().eq("customer_name", st.session_state["final_c_name"]).eq("product_name", k).eq("status", "已登記未出貨").execute()
+                        
+                        p_dict = {p["product_name"]: p for p in (supabase.table("product_master").select("product_id", "product_name", "price").execute().data or [])}
+                        excel_rows = []
+                        for prod_name, total_qty in pool_dict.items():
+                            c_pool = advanced_clean_product_name(prod_name)
+                            matched_b = 0
+                            for bk, bv in b_dict.items():
+                                if bk in c_pool or c_pool in bk: matched_b = bv; break
+                            actual_ship = max(0, total_qty - matched_b)
+                            if actual_ship > 0:
+                                supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": prod_name, "quantity": actual_ship, "status": "已出貨"}).execute()
+                                pr = p_dict.get(prod_name, {})
+                                excel_rows.append({"單據類型": "出貨", "日期": str(final_date), "客戶名稱": str(st.session_state["final_c_name"]), "商品名稱": str(prod_name), "數量": actual_ship, "單價": float(pr.get("price", 0)), "總金額": float(pr.get("price", 0)) * actual_ship})
+                            if matched_b > 0:
+                                supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": prod_name, "quantity": matched_b, "status": "已登記未出貨"}).execute()
+                        if excel_rows:
+                            output = io.BytesIO()
+                            df_xl = pd.DataFrame(excel_rows)
+                            df_xl.to_excel(output, index=False)
+                            st.session_state[excel_ready_key] = output.getvalue()
+                        st.session_state["unified_text_val"] = ""
+                        st.session_state["trigger_recalc"] = True
+                        st.rerun()
+                    except Exception as e: st.error(f"❌ 核銷失敗: {str(e)}")
 
     # --- ✍️ 純文字複製貼上模式 ---
     else:
@@ -373,38 +358,39 @@ if db_mode == "Line圖片文字叫貨":
         with txt_col_a: text_a = st.text_area("📋 客戶叫貨/加單 純文字", height=150, key="txt_area_a")
         with txt_col_b: text_b = st.text_area("📋 未發貨/餘剩 純文字", height=150, key="txt_area_b")
         
-        if (text_a or text_b):
+        if (text_a or text_b) and api_key:
             if st.button("⚡ 開始執行純文字智慧拆解分析", key="btn_txt_go", use_container_width=True):
                 if not has_customer:
-                    st.warning("⚠️ 請先在網頁最上方選定對帳客戶！")
-                    st.stop()
-                access_token = get_gemini_oauth_token()
-                if access_token:
-                    try:
-                        pure_text_a = clean_line_noise(text_a)
-                        pure_text_b = clean_line_noise(text_b)
-                        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-                        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
-                        
-                        res_items_a, res_items_b = [], []
-                        with st.spinner("⏳ 正在安全核銷分析中..."):
-                            if pure_text_a:
-                                payload_a = {"contents": [{"parts": [{"text": pure_text_a}, {"text": PROMPT_CLEAN_A}]}], "generationConfig": {"responseMimeType": "application/json"}}
-                                r_a = requests.post(url, headers=headers, json=payload_a).json()
-                                if "error" in r_a: st.error(r_a["error"]["message"]); st.stop()
-                                t_a = r_a['candidates'][0]['content']['parts'][0]['text'].strip()
-                                res_items_a = json.loads(re.sub(r"^```json\s*|```$", "", t_a, flags=re.MULTILINE).strip(), strict=False).get("items", [])
-                            if pure_text_b:
-                                payload_b = {"contents": [{"parts": [{"text": pure_text_b}, {"text": PROMPT_CLEAN_B}]}], "generationConfig": {"responseMimeType": "application/json"}}
-                                r_b = requests.post(url, headers=headers, json=payload_b).json()
-                                t_b = r_b['candidates'][0]['content']['parts'][0]['text'].strip()
-                                res_items_b = json.loads(re.sub(r"^```json\s*|```$", "", t_b, flags=re.MULTILINE).strip(), strict=False).get("items", [])
-                        st.session_state["items_a_cached"] = res_items_a
-                        st.session_state["items_b_cached"] = res_items_b
-                        st.session_state["trigger_recalc"] = True
-                        st.session_state["is_ai_mode"] = True
-                        st.rerun()
-                    except Exception as tx_err: st.error(f"❌ 分析失敗: {str(tx_err)}")
+                    st.warning("⚠️ 請先在網頁最上方選定對帳客戶！"); st.stop()
+                try:
+                    pure_text_a = clean_line_noise(text_a)
+                    pure_text_b = clean_line_noise(text_b)
+                    # 🎯 核心修復：全面換裝最經典的網址 Key 傳參，一秒破除 candidates 消失詛咒
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+                    headers = {"Content-Type": "application/json"}
+                    
+                    res_items_a, res_items_b = [], []
+                    with st.spinner("⏳ 正在智慧核銷分析中..."):
+                        if pure_text_a:
+                            payload_a = {"contents": [{"parts": [{"text": pure_text_a}, {"text": PROMPT_CLEAN_A}]}], "generationConfig": {"responseMimeType": "application/json"}}
+                            r_a = requests.post(url, headers=headers, json=payload_a).json()
+                            if "error" in r_a: st.error(r_a["error"]["message"]); st.stop()
+                            if "candidates" not in r_a: st.error(f"❌ A檔解析異常。回應內容：{r_a}"); st.stop()
+                            t_a = r_a['candidates'][0]['content']['parts'][0]['text'].strip()
+                            res_items_a = json.loads(re.sub(r"^```json\s*|```$", "", t_a, flags=re.MULTILINE).strip(), strict=False).get("items", [])
+                        if pure_text_b:
+                            payload_b = {"contents": [{"parts": [{"text": pure_text_b}, {"text": PROMPT_CLEAN_B}]}], "generationConfig": {"responseMimeType": "application/json"}}
+                            r_b = requests.post(url, headers=headers, json=payload_b).json()
+                            if "error" in r_b: st.error(r_b["error"]["message"]); st.stop()
+                            if "candidates" not in r_b: st.error(f"❌ B檔解析異常。回應內容：{r_b}"); st.stop()
+                            t_b = r_b['candidates'][0]['content']['parts'][0]['text'].strip()
+                            res_items_b = json.loads(re.sub(r"^```json\s*|```$", "", t_b, flags=re.MULTILINE).strip(), strict=False).get("items", [])
+                    st.session_state["items_a_cached"] = res_items_a
+                    st.session_state["items_b_cached"] = res_items_b
+                    st.session_state["trigger_recalc"] = True
+                    st.session_state["is_ai_mode"] = True
+                    st.rerun()
+                except Exception as tx_err: st.error(f"❌ 分析失敗: {str(tx_err)}")
 
     # ==================== 扣帳核心計算與看板渲染區 ====================
     is_any_ai_data = len(st.session_state["items_a_cached"]) > 0 or len(st.session_state["items_b_cached"]) > 0
@@ -436,11 +422,12 @@ if db_mode == "Line圖片文字叫貨":
             if not enable_all_dates: qb = qb.eq("delivery_date", final_date)
             pool_list = qb.execute().data or []
 
-        # 🎯 換成這段正確的程式碼：
+        # 🎯 安全修復漏洞：使用極度安全的獨立 for 迴圈加總，防堵任何 NameError
         pool_dict = {}
         for x in pool_list:
             p_name = x["product_name"]
             pool_dict[p_name] = pool_dict.get(p_name, 0) + int(x["quantity"])
+
         b_dict = {advanced_clean_product_name(b.get("raw_item_name")): int(pd.to_numeric(b.get("quantity", 0), errors='coerce') or 0) for b in items_b if b.get("raw_item_name")}
 
         table_rows = []
@@ -448,11 +435,9 @@ if db_mode == "Line圖片文字叫貨":
             c_pool = advanced_clean_product_name(prod_name)
             matched_b = 0
             for bk, bv in b_dict.items():
-                if bk in c_pool or c_pool in bk: 
-                    matched_b = bv
-                    break
+                if bk in c_pool or c_pool in bk: matched_b = bv; break
             
-            # 🎯 修正 1：只要 B 檔沒有特別記錄扣帳，實際出貨預設一律先給 0（留給一鍵滿額或手動改）
+            # 🎯 滿足商用防呆規格：B 檔無值時，預設出貨先判定為 0 件，保障不溢出發貨
             if (st.session_state["is_ai_mode"] or len(b_dict) > 0) and matched_b > 0:
                 actual_ship = max(0, total_qty - matched_b)
                 note = f"⚠️ 部分到貨(出{actual_ship}/欠{matched_b})"
@@ -465,23 +450,15 @@ if db_mode == "Line圖片文字叫貨":
 
             u_price, p_id = 0.0, "新編號"
             for p in master_products:
-                if p.get("product_name") == prod_name: 
-                    u_price = float(p.get("price", 0.0))
-                    p_id = p.get("product_id")
-                    break
+                if p.get("product_name") == prod_name: u_price = float(p.get("price", 0.0)); p_id = p.get("product_id"); break
 
-            table_rows.append({
-                "商品編號": p_id, "商品名稱": prod_name, "雲端累積總量": total_qty, 
-                "B檔未發剩餘": matched_b, "實際出貨數量": actual_ship, "單價": u_price, 
-                "總金額": actual_ship * u_price, "核銷動作": note
-            })
+            table_rows.append({"商品編號": p_id, "商品名稱": prod_name, "雲端累積總量": total_qty, "B檔未發剩餘": matched_b, "實際出貨數量": actual_ship, "單價": u_price, "總金額": actual_ship * u_price, "核銷動作": note})
         
         st.session_state[state_key] = pd.DataFrame(table_rows)
         st.session_state["items_a_cached"], st.session_state["items_b_cached"] = [], []
         st.session_state["trigger_recalc"], st.session_state["is_ai_mode"] = False, False
         st.rerun()
 
-    # ==================== 📊 獨立偵測滾動核銷面板渲染區 ====================
     st.subheader("📊 獨立偵測滾動核銷面板")
     if state_key in st.session_state and not st.session_state[state_key].empty:
         df_current = st.session_state[state_key]
@@ -500,11 +477,10 @@ if db_mode == "Line圖片文字叫貨":
                     st.rerun()
             with c_btn2:
                 if st.button("🔒 確認結帳並輸出 Excel", use_container_width=True):
-                    with st.spinner("⏳ 正在定格帳目並產出 Excel 報表..."):
+                    with st.spinner("⏳ 正在定格出貨軌跡與重整欠單..."):
                         excel_rows = []
                         df_final = st.session_state[state_key]
                         
-                        # 🎯 修正 2：在刪除雲端暫存前，先將當前對帳結果打包進 Excel 資料列
                         for _, r in df_final.iterrows():
                             act_qty = int(r["實際出貨數量"])
                             rem_qty = int(r["B檔未發剩餘"])
@@ -512,31 +488,31 @@ if db_mode == "Line圖片文字叫貨":
                             
                             if act_qty > 0:
                                 excel_rows.append({
-                                    "單據類型": "出貨", "訂單編號": "LINE智慧核銷", "客戶編號": str(st.session_state["final_c_id"]),
-                                    "客戶名稱": str(st.session_state["final_c_name"]), "日期": str(final_date),
-                                    "商品編號": str(r["商品編號"]), "商品名稱": str(p_name),
-                                    "數量": act_qty, "單價": float(r["單價"]), "總金額": float(r["總金額"])
+                                    "單據類型": "出貨", "日期": str(final_date), "客戶編號": str(st.session_state["final_c_id"]),
+                                    "客戶名稱": str(st.session_state["final_c_name"]), "商品編號": str(r["商品編號"]), 
+                                    "商品名稱": str(p_name), "數量": act_qty, "單價": float(r["單價"]), "總金額": float(r["總金額"])
                                 })
                             
-                            # 更新雲端資料庫狀態
                             supabase.table("delivery_orders").delete().eq("customer_name", st.session_state["final_c_name"]).eq("product_name", p_name).eq("status", "已登記未出貨").execute()
                             if act_qty > 0:
                                 supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": act_qty, "status": "已出貨"}).execute()
                             if rem_qty > 0:
                                 supabase.table("delivery_orders").insert({"delivery_date": final_date, "customer_name": st.session_state["final_c_name"], "product_name": p_name, "quantity": rem_qty, "status": "已登記未出貨"}).execute()
                         
-                        # 🎯 換成這段最單純、不寫死引擎的 Excel 製作代碼：
+                        # 🎯 安全且相容的 Excel 轉出邏輯
                         if excel_rows:
                             output = io.BytesIO()
                             df_xl = pd.DataFrame(excel_rows)
-                            # ✅ 優化：直接轉出成 Excel，讓系統自動調用環境解碼器
-                            df_xl.to_excel(output, index=False, sheet_name='本次核銷出貨明細')
+                            df_xl.to_excel(output, index=False)
                             st.session_state[excel_ready_key] = output.getvalue()
+                        
+                        st.success("🎉 結帳成功！出貨帳目軌跡已完全定格。")
+                        time.sleep(0.5)
                         st.rerun()
     else:
         st.info("💡 當前查詢條件下，雲端蓄水池內無待出貨登記項。")
 
-    # 🎯 修正 3：將下載按鈕移到最外層。這樣即使結帳後清空了表格，下載按鈕依然會穩穩留在畫面上供下載！
+    # 🎯 下載按鈕安全獨立在外層，不論結帳後表格是否排空，皆能順利下載！
     if excel_ready_key in st.session_state and st.session_state[excel_ready_key] is not None:
         st.markdown("---")
         st.download_button(
@@ -546,7 +522,6 @@ if db_mode == "Line圖片文字叫貨":
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
-
 # =========================================================
 # 其餘後台模組維持與原版一致 (略，維持原 Supabase 無快取綁定邏輯)
 # =========================================================
