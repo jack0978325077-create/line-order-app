@@ -3,3 +3,4 @@ google-genai
 pillow
 supabase
 st-theme
+xlsxwriter
